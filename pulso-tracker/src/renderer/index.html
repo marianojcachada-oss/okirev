@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src *; img-src 'self' data:;">
+  <title>OKlrev Tracker</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <div id="setup-view" class="view">
+    <div class="brand">
+      <div class="logo">OK<span class="logo-bar"></span></div>
+      <span class="wordmark"><span class="wm-strong">OK</span><span class="wm-bar"></span><span class="wm-light">rev</span></span>
+      <span class="wordmark-suffix">Tracker</span>
+    </div>
+    <h1>Iniciar sesión</h1>
+    <p class="hint">Pedile tu usuario y contraseña a tu supervisor.</p>
+
+    <label class="field-label">Usuario</label>
+    <input id="setup-username" class="text-input" autocomplete="username" />
+
+    <label class="field-label">Contraseña</label>
+    <input id="setup-password" type="password" class="text-input" autocomplete="current-password" />
+
+    <div id="setup-error" class="error-text"></div>
+
+    <button id="setup-login-btn" class="primary-btn" type="button">Iniciar sesión</button>
+
+    <button id="setup-advanced-toggle" class="link-inline" type="button">Configuración avanzada</button>
+    <div id="setup-advanced" class="hidden">
+      <label class="field-label">URL de la API</label>
+      <input id="setup-api-url" class="text-input" value="http://localhost:4000/api" />
+      <label class="field-label">URL del panel (para el botón "Abrir panel")</label>
+      <input id="setup-dashboard-url" class="text-input" value="http://localhost:5173" />
+      <label class="field-label">Token del dispositivo (solo si tu administrador generó uno en Ajustes)</label>
+      <input id="setup-device-token" class="text-input" placeholder="Dejalo vacío si no te dieron uno" />
+    </div>
+
+    <p class="fineprint">
+      No hay recuperación de contraseña desde acá. Si la olvidaste, pedile a tu supervisor que
+      te asigne una nueva desde el panel.
+    </p>
+  </div>
+
+  <div id="main-view" class="view hidden">
+    <div class="header">
+      <div class="brand full-only">
+        <div class="logo">OK<span class="logo-bar"></span></div>
+        <span class="wordmark"><span class="wm-strong">OK</span><span class="wm-bar"></span><span class="wm-light">rev</span></span>
+      </div>
+      <div class="header-actions">
+        <button id="compact-toggle-btn" class="icon-btn" type="button" title="Modo compacto">⤢</button>
+        <button id="tray-btn" class="icon-btn full-only" type="button" title="Enviar a la bandeja del sistema">—</button>
+        <button id="settings-btn" class="icon-btn full-only" type="button" title="Cambiar de usuario">⚙</button>
+      </div>
+    </div>
+
+    <div class="employee-name full-only" id="employee-name">—</div>
+
+    <div class="status-card">
+      <div class="status-label" id="status-label">Sin iniciar</div>
+      <div class="timer" id="timer">00:00:00</div>
+      <button id="toggle-btn" class="toggle-btn" type="button">Iniciar jornada</button>
+      <div class="current-app full-only" id="current-app-label"></div>
+    </div>
+
+    <div class="break-card">
+      <div class="break-info">
+        <span class="break-label">10-31 · Break</span>
+        <span class="break-countdown" id="break-countdown">15:00</span>
+      </div>
+      <button id="break-btn" class="break-btn" type="button" disabled>Iniciar 10-31</button>
+    </div>
+
+    <div class="section-label full-only" id="today-label">Hoy</div>
+    <div id="blocks-list" class="blocks-list full-only"></div>
+
+    <p class="fineprint full-only">
+      Mientras tu jornada está iniciada, esta app registra qué aplicación tenés en primer
+      plano y detecta inactividad de mouse/teclado. No graba lo que escribís.
+    </p>
+
+    <div class="footer full-only">
+      <span id="sync-label" class="sync-label">Sin sincronizar todavía</span>
+      <button id="open-dashboard-btn" class="link-btn" type="button">Abrir panel</button>
+    </div>
+  </div>
+
+  <div id="confirm-overlay" class="confirm-overlay hidden">
+    <div class="confirm-box">
+      <p id="confirm-message"></p>
+      <div class="confirm-actions">
+        <button id="confirm-no-btn" class="secondary-btn" type="button">Cancelar</button>
+        <button id="confirm-yes-btn" class="primary-btn" type="button">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,35 @@
+{
+  "name": "oklrev-tracker",
+  "private": true,
+  "version": "0.1.0",
+  "description": "App de escritorio para que los operadores marquen check-in (1015) y check-out (1025)",
+  "main": "src/main.js",
+  "author": "Tu Empresa S.A.",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^31.3.1",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.oklrev.tracker",
+    "productName": "OKlrev Tracker",
+    "copyright": "Copyright © 2026 Tu Empresa S.A.",
+    "files": ["src/**/*"],
+    "directories": { "output": "release" },
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "oklrev",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "concurrently -n SERVER,APP -c blue,green \"npm run dev --prefix pulso-server\" \"npm run dev --prefix pulso-app\"",
+    "install:all": "npm install --prefix pulso-server && npm install --prefix pulso-app && npm install --prefix pulso-tracker"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

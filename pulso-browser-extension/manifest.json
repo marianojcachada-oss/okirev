@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "OKlrev Tracker Companion",
+  "version": "1.0.0",
+  "description": "Le avisa a OKlrev Tracker qué sitio tenés activo, para categorizar el tiempo correctamente. No funciona sin la app de escritorio instalada.",
+  "permissions": ["tabs"],
+  "host_permissions": ["http://localhost/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "OKlrev Tracker Companion — activa"
+  }
+}

@@ -1,0 +1,83 @@
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap");
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  font-family: "Inter", system-ui, sans-serif;
+}
+
+.pulso-root {
+  font-family: "Inter", system-ui, sans-serif;
+}
+
+.pulso-display {
+  font-family: "Space Grotesk", system-ui, sans-serif;
+}
+
+.pulso-mono {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+}
+
+button {
+  font-family: inherit;
+}
+
+input {
+  font-family: inherit;
+}
+
+input::placeholder {
+  color: #6b6f7d;
+}
+
+.nav-item {
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.nav-item:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.row-hover:hover {
+  background-color: rgba(255, 255, 255, 0.025);
+}
+
+.chip-btn {
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.scroll-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: #2a2e3a;
+  border-radius: 4px;
+}
+.scroll-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@keyframes livePulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(45, 212, 167, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(45, 212, 167, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(45, 212, 167, 0);
+  }
+}
+.live-dot {
+  animation: livePulse 2s infinite;
+}
