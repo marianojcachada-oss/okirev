@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Download } from "lucide-react";
 import { COLORS } from "../theme";
 import { useAuth } from "../auth/AuthContext";
 import { LogoIcon, Wordmark } from "../components/Logo";
@@ -30,10 +31,11 @@ export default function Login() {
         background: COLORS.bg, color: COLORS.textPrimary,
       }}
     >
+      <div style={{ width: "100%", maxWidth: 340, display: "flex", flexDirection: "column", gap: 14 }}>
       <form
         onSubmit={handleSubmit}
         style={{
-          width: "100%", maxWidth: 340, background: COLORS.surface, border: `1px solid ${COLORS.border}`,
+          width: "100%", background: COLORS.surface, border: `1px solid ${COLORS.border}`,
           borderRadius: 14, padding: 28, display: "flex", flexDirection: "column", gap: 16,
         }}
       >
@@ -92,6 +94,19 @@ export default function Login() {
           No hay recuperación de contraseña desde acá — pedile a un administrador que te asigne una nueva.
         </p>
       </form>
+
+      <a
+        href="/descargas/OKlrev-Tracker-Setup.exe"
+        download
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+          background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 12,
+          padding: "12px", color: COLORS.textPrimary, fontSize: 13, textDecoration: "none",
+        }}
+      >
+        <Download size={15} /> Descargar app de escritorio (Windows)
+      </a>
+      </div>
     </div>
   );
 }

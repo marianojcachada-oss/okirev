@@ -47,8 +47,8 @@ create table if not exists employees (
 -- allowance naturally resets on every new check-in (a new block has no breaks logged yet).
 create table if not exists breaks (
   id text primary key,
-  employee_id text references employees(id),
-  attendance_id text references attendance(id),
+  employee_id text references employees(id) on delete cascade,
+  attendance_id text references attendance(id) on delete cascade,
   started_at timestamptz not null default now(),
   ended_at timestamptz,
   date date not null
@@ -80,7 +80,7 @@ create table if not exists alerts (
   id text primary key,
   severity text not null,               -- critica | advertencia | info
   type text not null,
-  employee_id text references employees(id),
+  employee_id text references employees(id) on delete cascade,
   employee_name text,
   detail text,
   time text,
@@ -91,7 +91,7 @@ create table if not exists alerts (
 -- Each row is one check-in/check-out block. An employee can have several per day.
 create table if not exists attendance (
   id text primary key,
-  employee_id text references employees(id),
+  employee_id text references employees(id) on delete cascade,
   name text,
   team text,
   date date not null,
@@ -107,7 +107,7 @@ create index if not exists idx_attendance_open on attendance(employee_id) where 
 -- Activity log: one row per detected app/window segment. duration_seconds enables SUM()/aggregation.
 create table if not exists activities (
   id text primary key,
-  employee_id text references employees(id),
+  employee_id text references employees(id) on delete cascade,
   employee_name text,
   app text not null,
   category text not null,              -- Productiva | No productiva | Pausa | Inactivo

@@ -156,6 +156,133 @@ function EmployeeFormModal({ initial, teams, roles, trackingConfigs, onClose, on
   );
 }
 
+// Defaults for bulk-added employees, per the standing instruction: fixed team, job title,
+// dashboard role and tracking config for the whole batch — only name and email vary per row.
+const BULK_DEFAULTS_NAME = "Operadores de despacho";
+
+function findByNameLoose(list, name) {
+  const target = name.trim().toLowerCase();
+  return (list || []).find((x) => x.name.trim().toLowerCase() === target);
+}
+
+function BulkAddModal({ teams, roles, onClose, onSaved }) {
+  const [raw, setRaw] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [results, setResults] = useState(null); // { created: [], failed: [{name, error}] }
+
+  const team = findByNameLoose(teams, BULK_DEFAULTS_NAME);
+  const role = findByNameLoose(roles, BULK_DEFAULTS_NAME) || findByNameLoose(roles, "Operador de despacho");
+  const setupError = !team
+    ? `No encontré un equipo llamado "${BULK_DEFAULTS_NAME}". Creálo primero en Equipos.`
+    : !role
+    ? `No encontré un rol llamado "${BULK_DEFAULTS_NAME}" (ni "Operador de despacho"). Creálo primero en Ajustes → Roles.`
+    : null;
+
+  const rows = raw
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [name, email] = line.split(",").map((s) => s?.trim());
+      return { name, email: email || "" };
+    })
+    .filter((r) => r.name);
+
+  async function handleSubmit() {
+    setSaving(true);
+    const created = [];
+    const failed = [];
+    for (const row of rows) {
+      try {
+        await api.post("/employees", {
+          name: row.name,
+          username: row.name,
+          email: row.email,
+          teamId: team.id,
+          role: BULK_DEFAULTS_NAME,
+          roleId: role.id,
+        });
+        created.push(row.name);
+      } catch (err) {
+        failed.push({ name: row.name, error: err.message });
+      }
+    }
+    setResults({ created, failed });
+    setSaving(false);
+    if (created.length > 0) onSaved();
+  }
+
+  return (
+    <Modal title="Agregar empleados en masa" onClose={onClose} width={440}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {setupError ? (
+          <div style={{ color: COLORS.critical, fontSize: 12.5 }}>{setupError}</div>
+        ) : results ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ fontSize: 13, color: COLORS.live }}>
+              {results.created.length} creado{results.created.length === 1 ? "" : "s"} correctamente.
+            </div>
+            {results.failed.length > 0 && (
+              <div>
+                <div style={{ fontSize: 12.5, color: COLORS.critical, marginBottom: 6 }}>
+                  {results.failed.length} fallaron:
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {results.failed.map((f, i) => (
+                    <div key={i} style={{ fontSize: 12, color: COLORS.textSecondary }}>
+                      <span className="pulso-mono">{f.name}</span> — {f.error}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <button
+              onClick={onClose}
+              className="chip-btn"
+              style={{ padding: "10px", borderRadius: 8, border: "none", background: COLORS.brand, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+            >
+              Cerrar
+            </button>
+          </div>
+        ) : (
+          <>
+            <div style={{ fontSize: 12, color: COLORS.textTertiary, lineHeight: 1.5 }}>
+              Un empleado por línea: <strong>Nombre, email</strong> (el email es opcional). Para
+              todos se va a usar: equipo <strong>{BULK_DEFAULTS_NAME}</strong>, puesto{" "}
+              <strong>{BULK_DEFAULTS_NAME}</strong>, rol de panel <strong>{role?.name}</strong>, y
+              configuración de trackeo default de la empresa. El usuario de cada uno va a ser su
+              nombre tal cual lo escribas acá.
+            </div>
+            <textarea
+              value={raw}
+              onChange={(e) => setRaw(e.target.value)}
+              placeholder={"Juan Pérez, juan@empresa.com\nSofía Gómez, sofia@empresa.com\nDiego Ruiz"}
+              rows={8}
+              style={{
+                width: "100%", background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 8,
+                padding: "9px 12px", color: COLORS.textPrimary, fontSize: 13, boxSizing: "border-box",
+                fontFamily: "inherit", resize: "vertical",
+              }}
+            />
+            <div style={{ fontSize: 12, color: COLORS.textTertiary }}>{rows.length} para crear.</div>
+            <button
+              onClick={handleSubmit}
+              disabled={saving || rows.length === 0}
+              className="chip-btn"
+              style={{
+                padding: "10px", borderRadius: 8, border: "none", background: COLORS.brand, color: "#fff",
+                fontSize: 13, fontWeight: 600, cursor: saving ? "default" : "pointer", opacity: saving || rows.length === 0 ? 0.6 : 1,
+              }}
+            >
+              {saving ? "Creando…" : `Crear ${rows.length} empleado${rows.length === 1 ? "" : "s"}`}
+            </button>
+          </>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 function PasswordModal({ employee, onClose, onSaved }) {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -230,6 +357,7 @@ export default function Empleados() {
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState(() => new Set());
   const [formModal, setFormModal] = useState(null); // null | "create" | employee object
+  const [bulkModal, setBulkModal] = useState(false);
   const [passwordModal, setPasswordModal] = useState(null); // null | employee object
 
   const { data: employees, loading: loadingEmployees, error: errorEmployees, refetch } = useApi("/employees");
@@ -312,6 +440,17 @@ export default function Empleados() {
           }}
         >
           <Plus size={15} /> Agregar empleado
+        </button>
+        <button
+          onClick={() => setBulkModal(true)}
+          className="chip-btn"
+          style={{
+            display: "flex", alignItems: "center", gap: 6, padding: "9px 14px", borderRadius: 8,
+            border: `1px solid ${COLORS.border}`, background: "transparent", color: COLORS.textPrimary, fontSize: 13,
+            cursor: "pointer", whiteSpace: "nowrap",
+          }}
+        >
+          <Plus size={15} /> Agregar en masa
         </button>
       </div>
 
@@ -485,6 +624,9 @@ export default function Empleados() {
       )}
       {passwordModal && (
         <PasswordModal employee={passwordModal} onClose={() => setPasswordModal(null)} onSaved={refetch} />
+      )}
+      {bulkModal && (
+        <BulkAddModal teams={teams || []} roles={roles || []} onClose={() => setBulkModal(false)} onSaved={refetch} />
       )}
     </div>
   );
