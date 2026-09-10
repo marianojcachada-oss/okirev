@@ -77,21 +77,12 @@ let idleThresholdSeconds = 300;
 let onFlush = null; // (record) => void
 let onStatusChange = null; // ({status, app}) => void
 
-function formatLabel({ app: procName, title }) {
-  return title ? `${procName} — ${title}` : procName;
-}
-
-// Browser tab titles for web apps (Teams, Slack, etc.) often look like:
-// "(1057) Chat | Vista compacta de la reunión | Reunión en X | Microsoft Teams - Opera"
-// Everything before the last "|" is dynamic noise (chat previews, meeting names); the part
-// after it ("Microsoft Teams - Opera") reliably identifies the site/app. Only used as a
-// fallback when the extension hasn't reported a real hostname for this tab.
-function simplifyBrowserTitle(title) {
-  if (!title) return title;
-  const parts = title.split("|");
-  return parts[parts.length - 1].trim();
-}
-
+// Window titles carry a lot of dynamic, per-moment noise (chat counts, document names,
+// email subjects, meeting names) that would otherwise blow up the app catalog into one
+// distinct "app" per unique title ever seen. So the label kept for classification purposes
+// is deliberately coarse: just the program name for regular apps, and for browsers, just the
+// site (from the extension's real hostname) or the browser name alone as a fallback — never
+// the raw window title.
 function categorize(isIdle) {
   return isIdle ? "Inactivo" : null; // null = let the backend resolve it from the catalog
 }
@@ -123,9 +114,9 @@ async function tick() {
       const isBrowser = BROWSER_PROCESSES.some((p) => win.app.toLowerCase().includes(p));
       if (isBrowser) {
         const tab = getCurrentBrowserTab();
-        label = tab ? `${win.app} — ${tab.hostname}` : formatLabel({ app: win.app, title: simplifyBrowserTitle(win.title) });
+        label = tab ? `${win.app} — ${tab.hostname}` : win.app;
       } else {
-        label = formatLabel(win);
+        label = win.app;
       }
     } catch {
       label = "Desconocido";

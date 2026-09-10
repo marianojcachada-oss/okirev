@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "App de escritorio para que los operadores marquen check-in (1015) y check-out (1025)",
   "main": "src/main.js",
-  "author": "D005 Manager",
+  "author": "Tu Empresa S.A.",
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder",
@@ -17,7 +17,7 @@
   "build": {
     "appId": "com.oklrev.tracker",
     "productName": "OKlrev Tracker",
-    "copyright": "Copyright © 2026 Taxi Laser LLC",
+    "copyright": "Copyright © 2026 Tu Empresa S.A.",
     "files": ["src/**/*"],
     "directories": { "output": "release" },
     "win": {

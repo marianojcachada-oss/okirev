@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { COLORS } from "../theme";
 import { useApi } from "../hooks/useApi";
 import { Card, Initials, Th, Td, StateMessage } from "../components/ui";
@@ -140,6 +141,123 @@ function RangeBarRow({ name, team, productiveH, neutralH, unproductiveH, inactiv
   );
 }
 
+function CategorySummary({ aggregatedLog }) {
+  const byCategory = useMemo(() => {
+    const totals = {};
+    for (const a of aggregatedLog) {
+      totals[a.category] = (totals[a.category] || 0) + a.durationSeconds;
+    }
+    return Object.entries(totals)
+      .map(([category, seconds]) => ({ category, seconds }))
+      .sort((a, b) => b.seconds - a.seconds);
+  }, [aggregatedLog]);
+
+  const totalSeconds = byCategory.reduce((s, c) => s + c.seconds, 0);
+
+  if (totalSeconds === 0) return null;
+
+  return (
+    <Card>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 220px", gap: 20, alignItems: "center" }}>
+        <div>
+          <div style={{ fontSize: 12.5, color: COLORS.textSecondary, marginBottom: 10 }}>Por categoría</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {byCategory.map((c) => (
+              <div key={c.category} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ width: 9, height: 9, borderRadius: 2, background: CATEGORY_COLORS[c.category] || COLORS.textTertiary, flexShrink: 0 }} />
+                <span style={{ fontSize: 12.5, flex: 1 }}>{CATEGORY_LABELS[c.category] || c.category}</span>
+                <span className="pulso-mono" style={{ fontSize: 12.5, color: COLORS.textSecondary }}>{formatDuration(c.seconds)}</span>
+                <span className="pulso-mono" style={{ fontSize: 11.5, color: COLORS.textTertiary, width: 34, textAlign: "right" }}>
+                  {Math.round((c.seconds / totalSeconds) * 100)}%
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div style={{ height: 180 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={byCategory}
+                dataKey="seconds"
+                nameKey="category"
+                innerRadius={45}
+                outerRadius={75}
+                paddingAngle={2}
+                stroke="none"
+              >
+                {byCategory.map((c) => (
+                  <Cell key={c.category} fill={CATEGORY_COLORS[c.category] || COLORS.textTertiary} />
+                ))}
+              </Pie>
+              <Tooltip
+                formatter={(value, name) => [formatDuration(value), CATEGORY_LABELS[name] || name]}
+                contentStyle={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, fontSize: 12 }}
+              />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+const APP_SLICE_COLORS = ["#6C7BFF", "#2DD4A7", "#F5A623", "#F0555A", "#8B5CF6", "#38BDF8", "#FB923C", "#A78BFA"];
+const OTHER_COLOR = "#4B5162";
+
+function AppsSummary({ aggregatedLog }) {
+  const { slices, totalSeconds } = useMemo(() => {
+    const sorted = aggregatedLog.slice().sort((a, b) => b.durationSeconds - a.durationSeconds);
+    const top = sorted.slice(0, 7);
+    const rest = sorted.slice(7);
+    const restSeconds = rest.reduce((s, a) => s + a.durationSeconds, 0);
+    const result = top.map((a, i) => ({ app: a.app, category: a.category, seconds: a.durationSeconds, color: APP_SLICE_COLORS[i % APP_SLICE_COLORS.length] }));
+    if (restSeconds > 0) result.push({ app: "Otro", category: null, seconds: restSeconds, color: OTHER_COLOR });
+    return { slices: result, totalSeconds: sorted.reduce((s, a) => s + a.durationSeconds, 0) };
+  }, [aggregatedLog]);
+
+  if (totalSeconds === 0) return null;
+
+  return (
+    <Card>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 220px", gap: 20, alignItems: "center" }}>
+        <div>
+          <div style={{ fontSize: 12.5, color: COLORS.textSecondary, marginBottom: 10 }}>Apps y webs más usadas</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {slices.map((s) => (
+              <div key={s.app} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ width: 9, height: 9, borderRadius: 2, background: s.color, flexShrink: 0 }} />
+                <span style={{ fontSize: 12.5, flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.app}</span>
+                {s.category && (
+                  <span style={{ fontSize: 11, color: CATEGORY_COLORS[s.category] || COLORS.textTertiary }}>
+                    {CATEGORY_LABELS[s.category] || s.category}
+                  </span>
+                )}
+                <span className="pulso-mono" style={{ fontSize: 12.5, color: COLORS.textSecondary }}>{formatDuration(s.seconds)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div style={{ height: 180 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie data={slices} dataKey="seconds" nameKey="app" innerRadius={45} outerRadius={75} paddingAngle={2} stroke="none">
+                {slices.map((s) => (
+                  <Cell key={s.app} fill={s.color} />
+                ))}
+              </Pie>
+              <Tooltip
+                formatter={(value, name) => [formatDuration(value), name]}
+                contentStyle={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, fontSize: 12 }}
+              />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 export default function Actividades() {
   const today = atlantaToday();
   const [preset, setPreset] = useState("hoy");
@@ -261,6 +379,9 @@ export default function Actividades() {
           </div>
         </div>
       </Card>
+
+      <CategorySummary aggregatedLog={aggregatedLog} />
+      <AppsSummary aggregatedLog={aggregatedLog} />
 
       <Card>
         {isSingleDay ? (
