@@ -1,0 +1,8 @@
+Poné acá el instalador del tracker, siempre con este nombre exacto:
+
+OKlrev-Tracker-Setup.exe
+
+(sin el número de versión en el nombre, así el link de la página de login nunca
+tiene que cambiar — simplemente reemplazá este archivo cada vez que generes un
+instalador nuevo con "npm run dist:win" en pulso-tracker, y volvé a desplegar
+pulso-app).

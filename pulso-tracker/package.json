@@ -1,10 +1,10 @@
 {
   "name": "oklrev-tracker",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.1.0",
   "description": "App de escritorio para que los operadores marquen check-in (1015) y check-out (1025)",
   "main": "src/main.js",
-  "author": "D005 Development",
+  "author": "D005 Manager",
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder",
@@ -25,7 +25,7 @@
       "icon": "build/icon.ico"
     },
     "nsis": {
-      "oneClick": true,
+      "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
