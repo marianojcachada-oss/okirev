@@ -31,7 +31,9 @@ function RoleFormModal({ initial, onClose, onSaved }) {
         next.delete(pageId);
         next.delete(`${pageId}:own`);
       } else {
-        next.add(pageId);
+        // Default to the narrower "own only" scope when available — safer default, since
+        // it's easy to widen to "todos" with one click but easy to miss narrowing it down.
+        next.add(SCOPABLE_PAGES.has(pageId) ? `${pageId}:own` : pageId);
       }
       return next;
     });
