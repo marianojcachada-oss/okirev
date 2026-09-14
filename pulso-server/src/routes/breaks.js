@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { query, newId, todayDateStr } from "../db.js";
-import { requireDeviceToken } from "../middleware/deviceAuth.js";
+import { requireSession } from "../middleware/requireSession.js";
 
 const router = Router();
 
@@ -55,9 +55,8 @@ router.get("/current/:employeeId", async (req, res) => {
 
 // POST /api/breaks/start  { employeeId }  -- código 10-31. Does NOT touch check-in/check-out;
 // the shift timer keeps running exactly as before.
-router.post("/start", requireDeviceToken, async (req, res) => {
-  const { employeeId } = req.body;
-  if (!employeeId) return res.status(400).json({ error: "Falta employeeId" });
+router.post("/start", requireSession, async (req, res) => {
+  const employeeId = req.session.employeeId;
 
   const attResult = await query(
     "select id from attendance where employee_id = $1 and check_out_at is null order by check_in_at desc limit 1",
@@ -84,9 +83,8 @@ router.post("/start", requireDeviceToken, async (req, res) => {
 
 // POST /api/breaks/end  { employeeId }  -- closes the open break and logs it as a "Break"
 // activity so it shows up in the users' activity breakdown.
-router.post("/end", requireDeviceToken, async (req, res) => {
-  const { employeeId } = req.body;
-  if (!employeeId) return res.status(400).json({ error: "Falta employeeId" });
+router.post("/end", requireSession, async (req, res) => {
+  const employeeId = req.session.employeeId;
 
   const openResult = await query(
     "select * from breaks where employee_id = $1 and ended_at is null order by started_at desc limit 1",

@@ -115,21 +115,20 @@ function authHeaders(token) {
 }
 
 ipcMain.handle("tracking:start", (_event, payload) => {
-  const { apiUrl, employeeId, deviceToken, idleThresholdMinutes } = payload;
+  const { apiUrl, employeeId, sessionToken, idleThresholdMinutes } = payload;
 
   tracker.start({
     idleThresholdMinutes,
     flushCallback: async (record) => {
       try {
         const body = {
-          employeeId,
           app: record.app,
           duration: formatDuration(record.durationMs),
         };
         if (record.category) body.category = record.category; // only set for "Inactivo"; otherwise the backend resolves it from the catalog
         await fetch(`${apiUrl}/activities`, {
           method: "POST",
-          headers: authHeaders(deviceToken),
+          headers: authHeaders(sessionToken),
           body: JSON.stringify(body),
         });
       } catch (err) {
@@ -143,7 +142,7 @@ ipcMain.handle("tracking:start", (_event, payload) => {
       try {
         await fetch(`${apiUrl}/employees/${employeeId}`, {
           method: "PATCH",
-          headers: authHeaders(deviceToken),
+          headers: authHeaders(sessionToken),
           body: JSON.stringify({ status, app: appLabel }),
         });
       } catch (err) {

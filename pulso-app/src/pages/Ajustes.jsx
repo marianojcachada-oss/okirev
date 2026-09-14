@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Ban, X, Plus, Copy, RefreshCw, Pencil, Trash2, Shield } from "lucide-react";
+import { Ban, X, Plus, Pencil, Trash2, Shield } from "lucide-react";
 import { COLORS, NAV_ITEMS } from "../theme";
 import { useApi } from "../hooks/useApi";
 import { api } from "../api/client";
@@ -344,8 +344,6 @@ function TrackingConfigsSection() {
 export default function Ajustes() {
   const { data: settings, loading, error, refetch } = useApi("/settings");
   const [newApp, setNewApp] = useState("");
-  const [token, setToken] = useState(null);
-  const [generating, setGenerating] = useState(false);
   const [companyName, setCompanyName] = useState(null);
   const [timezone, setTimezone] = useState(null);
   const [idleThreshold, setIdleThreshold] = useState(null);
@@ -361,24 +359,6 @@ export default function Ajustes() {
     if (!newApp.trim()) return;
     await api.post("/settings/prohibited-apps", { name: newApp.trim() });
     setNewApp("");
-    refetch();
-  }
-
-  async function generateToken() {
-    setGenerating(true);
-    try {
-      const result = await api.post("/settings/token", {});
-      setToken(result.token);
-      refetch();
-    } finally {
-      setGenerating(false);
-    }
-  }
-
-  async function revokeToken() {
-    if (!confirm("¿Quitar el token? Los operadores que ya lo tengan configurado en su app de escritorio van a dejar de poder marcar check-in/check-out hasta que generes uno nuevo y lo actualicen ahí.")) return;
-    await api.del("/settings/token");
-    setToken(null);
     refetch();
   }
 
@@ -523,70 +503,6 @@ export default function Ajustes() {
             <Plus size={14} /> Agregar
           </button>
         </div>
-      </Card>
-
-      <Card>
-        <SectionHeading>Conexión con la app de escritorio</SectionHeading>
-        <p style={{ fontSize: 13, color: COLORS.textSecondary, margin: "0 0 14px" }}>
-          Generá un token para vincular la aplicación de escritorio de cada operador con esta cuenta. Una vez generado,
-          las rutas de check-in, check-out y actividades del servidor van a exigirlo en el header{" "}
-          <span className="pulso-mono">Authorization: Bearer &lt;token&gt;</span>.
-        </p>
-        {token ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div
-              className="pulso-mono"
-              style={{
-                flex: 1, background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 8,
-                padding: "9px 12px", fontSize: 12.5, color: COLORS.textSecondary, overflowX: "auto",
-              }}
-            >
-              {token}
-            </div>
-            <button
-              onClick={() => navigator.clipboard && navigator.clipboard.writeText(token)}
-              className="chip-btn"
-              style={{
-                background: COLORS.surfaceHover, border: `1px solid ${COLORS.border}`, borderRadius: 8,
-                padding: 9, cursor: "pointer", color: COLORS.textSecondary, display: "flex",
-              }}
-            >
-              <Copy size={15} />
-            </button>
-          </div>
-        ) : (
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button
-              onClick={generateToken}
-              disabled={generating}
-              className="chip-btn"
-              style={{
-                display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", borderRadius: 8,
-                border: `1px solid ${COLORS.border}`, background: COLORS.surfaceHover, color: COLORS.textPrimary,
-                fontSize: 13, cursor: generating ? "default" : "pointer", opacity: generating ? 0.7 : 1,
-              }}
-            >
-              <RefreshCw size={14} /> {generating ? "Generando…" : settings.hasToken ? "Generar un token nuevo" : "Generar token"}
-            </button>
-            {settings.hasToken && (
-              <button
-                onClick={revokeToken}
-                className="chip-btn"
-                style={{
-                  padding: "9px 14px", borderRadius: 8, border: `1px solid ${COLORS.border}`,
-                  background: COLORS.surfaceHover, color: COLORS.critical, fontSize: 13, cursor: "pointer",
-                }}
-              >
-                Quitar token
-              </button>
-            )}
-          </div>
-        )}
-        {!token && settings.hasToken && (
-          <p style={{ fontSize: 12, color: COLORS.textTertiary, marginTop: 10 }}>
-            Ya hay un token activo (no se muestra de nuevo por seguridad). Generá uno nuevo si lo perdiste, o quitalo si no lo estás usando.
-          </p>
-        )}
       </Card>
 
       <RolesSection />

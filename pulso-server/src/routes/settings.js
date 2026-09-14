@@ -1,5 +1,4 @@
 import { Router } from "express";
-import crypto from "crypto";
 import { query } from "../db.js";
 import { requireSession, requirePermission } from "../middleware/requireSession.js";
 
@@ -12,7 +11,6 @@ function mapRow(row) {
     idleThresholdMinutes: row.idle_threshold_minutes,
     defaultBreakMinutes: row.default_break_minutes,
     prohibitedApps: row.prohibited_apps || [],
-    hasToken: !!row.desktop_token,
   };
 }
 
@@ -69,21 +67,6 @@ router.delete("/prohibited-apps/:name", requireSession, requirePermission("ajust
     [req.params.name]
   );
   res.json(rows[0].prohibited_apps);
-});
-
-// POST /api/settings/token -> generates and stores a new token for the desktop app.
-// Returned in full only in this response, same as most real APIs.
-router.post("/token", requireSession, requirePermission("ajustes"), async (req, res) => {
-  const token = `oklrev_live_${crypto.randomBytes(12).toString("hex")}`;
-  await query("update settings set desktop_token = $1 where id = 1", [token]);
-  res.status(201).json({ token });
-});
-
-// DELETE /api/settings/token -> revokes the current token; check-in/checkout/activities
-// become unauthenticated again until a new one is generated.
-router.delete("/token", requireSession, requirePermission("ajustes"), async (req, res) => {
-  await query("update settings set desktop_token = null where id = 1");
-  res.json({ ok: true });
 });
 
 export default router;

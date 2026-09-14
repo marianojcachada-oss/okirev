@@ -1,9 +1,18 @@
 import { Router } from "express";
 import { query, newId, nowHM, minutesSinceMidnight, todayDateStr, hoursLabelFromDates, atlantaToUtc } from "../db.js";
-import { requireDeviceToken } from "../middleware/deviceAuth.js";
 import { requireSession, requirePermission } from "../middleware/requireSession.js";
 
 const router = Router();
+
+// The tracker always checks itself in/out (employeeId matches its own session). The
+// dashboard's manual check-in/out (Asistencia) can act on ANY employee, but only for a
+// session whose role has "asistencia" permission — same gate as the page itself.
+function resolveActingEmployeeId(req, requestedId) {
+  if (!requestedId || requestedId === req.session.employeeId) return req.session.employeeId;
+  const perms = req.session.role?.permissions || [];
+  if (perms.includes("asistencia")) return requestedId;
+  return null; // not allowed to act on someone else
+}
 
 const SHIFT_START_MINUTES = 9 * 60; // 09:00, used only to estimate "tardanza" on the first block of the day
 
@@ -56,9 +65,9 @@ router.get("/today/:employeeId", async (req, res) => {
 });
 
 // POST /api/attendance/checkin  { employeeId }  -- código 1015. Siempre crea un bloque nuevo.
-router.post("/checkin", requireDeviceToken, async (req, res) => {
-  const { employeeId } = req.body;
-  if (!employeeId) return res.status(400).json({ error: "Falta employeeId" });
+router.post("/checkin", requireSession, async (req, res) => {
+  const employeeId = resolveActingEmployeeId(req, req.body.employeeId);
+  if (!employeeId) return res.status(403).json({ error: "No tenés permiso para marcar el check-in de otro empleado" });
 
   const employeeResult = await query("select id, name, team_id from employees where id = $1", [employeeId]);
   const employee = employeeResult.rows[0];
@@ -100,9 +109,9 @@ router.post("/checkin", requireDeviceToken, async (req, res) => {
 });
 
 // POST /api/attendance/checkout  { employeeId }  -- código 1025. Cierra el bloque abierto más reciente.
-router.post("/checkout", requireDeviceToken, async (req, res) => {
-  const { employeeId } = req.body;
-  if (!employeeId) return res.status(400).json({ error: "Falta employeeId" });
+router.post("/checkout", requireSession, async (req, res) => {
+  const employeeId = resolveActingEmployeeId(req, req.body.employeeId);
+  if (!employeeId) return res.status(403).json({ error: "No tenés permiso para marcar el check-out de otro empleado" });
 
   const employeeResult = await query("select id from employees where id = $1", [employeeId]);
   if (!employeeResult.rows[0]) return res.status(404).json({ error: "Empleado no encontrado" });

@@ -61,13 +61,11 @@ let setupListenersAttached = false;
 function initSetupView() {
   const apiInput = $("setup-api-url");
   const dashboardInput = $("setup-dashboard-url");
-  const tokenInput = $("setup-device-token");
   const usernameInput = $("setup-username");
   const passwordInput = $("setup-password");
 
   if (state.config?.apiUrl) apiInput.value = state.config.apiUrl;
   if (state.config?.dashboardUrl) dashboardInput.value = state.config.dashboardUrl;
-  if (state.config?.deviceToken) tokenInput.value = state.config.deviceToken;
   usernameInput.value = "";
   passwordInput.value = "";
   $("setup-error").textContent = "";
@@ -105,7 +103,6 @@ function initSetupView() {
       state.config = await window.pulso.saveConfig({
         apiUrl,
         dashboardUrl: dashboardInput.value.trim(),
-        deviceToken: tokenInput.value.trim() || null,
         employeeId: employee.id,
         employeeName: employee.name,
         sessionToken: employee.token,
@@ -145,7 +142,7 @@ async function ensureTracking(shouldBeActive) {
     await window.pulso.startTracking({
       apiUrl: state.config.apiUrl,
       employeeId: state.config.employeeId,
-      deviceToken: state.config.deviceToken || null,
+      sessionToken: state.config.sessionToken || null,
       idleThresholdMinutes: state.settings.idleThresholdMinutes,
     });
     state.trackingActive = true;
@@ -239,9 +236,9 @@ async function handleBreakToggle() {
   btn.disabled = true;
   try {
     if (state.breakState?.isOnBreak) {
-      await apiPost(state.config.apiUrl, "/breaks/end", { employeeId: state.config.employeeId }, state.config.deviceToken);
+      await apiPost(state.config.apiUrl, "/breaks/end", {}, state.config.sessionToken);
     } else {
-      await apiPost(state.config.apiUrl, "/breaks/start", { employeeId: state.config.employeeId }, state.config.deviceToken);
+      await apiPost(state.config.apiUrl, "/breaks/start", {}, state.config.sessionToken);
     }
     await refreshBreakStatus();
   } catch (err) {
@@ -348,9 +345,9 @@ async function handleToggle() {
   toggleBtn.disabled = true;
   try {
     if (open) {
-      await apiPost(state.config.apiUrl, "/attendance/checkout", { employeeId: state.config.employeeId }, state.config.deviceToken);
+      await apiPost(state.config.apiUrl, "/attendance/checkout", { employeeId: state.config.employeeId }, state.config.sessionToken);
     } else {
-      await apiPost(state.config.apiUrl, "/attendance/checkin", { employeeId: state.config.employeeId }, state.config.deviceToken);
+      await apiPost(state.config.apiUrl, "/attendance/checkin", { employeeId: state.config.employeeId }, state.config.sessionToken);
     }
     await refreshToday(false);
   } catch (err) {

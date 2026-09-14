@@ -1,6 +1,5 @@
 import { Router } from "express";
 import { query, newId, formatDurationSeconds, parseDurationToSeconds, EFFECTIVE_CATEGORY_SQL } from "../db.js";
-import { requireDeviceToken } from "../middleware/deviceAuth.js";
 import { requireSession, requirePermission } from "../middleware/requireSession.js";
 
 const router = Router();
@@ -150,10 +149,11 @@ router.get("/timeline-by-day", requireSession, requirePermission("actividades"),
 // (only the tracker knows about idle time) — for everything else, the category is resolved
 // here from the catalog, so reclassifying an app from the dashboard takes effect immediately
 // without needing to update the desktop app.
-router.post("/", requireDeviceToken, async (req, res) => {
-  const { employeeId, app, duration, category: providedCategory } = req.body;
-  if (!employeeId || !app || !duration) {
-    return res.status(400).json({ error: "Faltan campos: employeeId, app, duration" });
+router.post("/", requireSession, async (req, res) => {
+  const employeeId = req.session.employeeId;
+  const { app, duration, category: providedCategory } = req.body;
+  if (!app || !duration) {
+    return res.status(400).json({ error: "Faltan campos: app, duration" });
   }
 
   const employeeResult = await query("select id, name from employees where id = $1", [employeeId]);

@@ -60,7 +60,7 @@ create table if not exists sessions (
   token text primary key,
   employee_id text not null references employees(id) on delete cascade,
   created_at timestamptz not null default now(),
-  expires_at timestamptz not null default (now() + interval '30 days')
+  expires_at timestamptz not null default (now() + interval '180 days')
 );
 create index if not exists idx_sessions_employee on sessions(employee_id);
 
