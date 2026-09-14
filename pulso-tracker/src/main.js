@@ -1,6 +1,7 @@
-const { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage, dialog } = require("electron");
 const path = require("path");
 const os = require("os");
+const { autoUpdater } = require("electron-updater");
 const { readConfig, writeConfig } = require("./store");
 const tracker = require("./tracker");
 const { startBridgeServer, stopBridgeServer } = require("./browserBridge");
@@ -58,10 +59,42 @@ function showFromTray() {
   mainWindow.focus();
 }
 
+function setupAutoUpdate() {
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on("update-downloaded", async (info) => {
+    const { response } = await dialog.showMessageBox(mainWindow, {
+      type: "info",
+      title: "Actualización lista",
+      message: `Hay una versión nueva de OKlrev Tracker (${info.version}) lista para instalar.`,
+      detail: "Se va a instalar sola la próxima vez que cierres la app. También podés reiniciar ahora mismo.",
+      buttons: ["Reiniciar ahora", "Más tarde"],
+      defaultId: 0,
+      cancelId: 1,
+    });
+    if (response === 0) {
+      isQuitting = true;
+      autoUpdater.quitAndInstall();
+    }
+  });
+
+  autoUpdater.on("error", (err) => {
+    console.error("Error buscando actualizaciones:", err.message);
+  });
+
+  autoUpdater.checkForUpdates().catch((err) => console.error("No se pudo chequear actualizaciones:", err.message));
+  // Vuelve a chequear cada 4 horas, ya que la app suele quedar abierta toda la jornada.
+  setInterval(() => {
+    autoUpdater.checkForUpdates().catch(() => {});
+  }, 4 * 60 * 60 * 1000);
+}
+
 app.whenReady().then(() => {
   createWindow();
   createTray();
   startBridgeServer();
+  setupAutoUpdate();
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
