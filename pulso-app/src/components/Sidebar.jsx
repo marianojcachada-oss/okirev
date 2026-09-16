@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { ChevronDown, ChevronsLeft, ChevronsRight, LogOut } from "lucide-react";
-import { COLORS, NAV_ITEMS } from "../theme";
+import { ChevronDown, ChevronsLeft, ChevronsRight, LogOut, Palette } from "lucide-react";
+import { COLORS, NAV_ITEMS, THEMES } from "../theme";
+import { useTheme } from "../context/ThemeContext";
 import Initials from "./ui/Initials";
 import { LogoIcon, Wordmark } from "./Logo";
 import { useAuth } from "../auth/AuthContext";
@@ -9,6 +10,7 @@ import { useAuth } from "../auth/AuthContext";
 export default function Sidebar({ collapsed, onToggleCollapse, openAlerts }) {
   const location = useLocation();
   const { user, hasPermission, logout } = useAuth();
+  const { theme, setTheme } = useTheme();
   const [informesOpen, setInformesOpen] = useState(location.pathname.startsWith("/informes"));
   const width = collapsed ? 76 : 264;
 
@@ -162,6 +164,24 @@ export default function Sidebar({ collapsed, onToggleCollapse, openAlerts }) {
           {collapsed ? <ChevronsRight size={17} /> : <ChevronsLeft size={17} />}
           {!collapsed && <span style={{ fontSize: 13 }}>Colapsar menú</span>}
         </button>
+        {!collapsed && (
+          <button
+            onClick={() => {
+              const idx = THEMES.findIndex((t) => t.id === theme);
+              setTheme(THEMES[(idx + 1) % THEMES.length].id);
+            }}
+            title={`Tema: ${THEMES.find((t) => t.id === theme)?.label} — clic para cambiar`}
+            className="chip-btn"
+            style={{
+              display: "flex", alignItems: "center", gap: 8, margin: "4px 12px 0", padding: "7px 10px",
+              borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "transparent",
+              color: COLORS.textSecondary, fontSize: 12, cursor: "pointer",
+            }}
+          >
+            <Palette size={14} />
+            {THEMES.find((t) => t.id === theme)?.label}
+          </button>
+        )}
         {!collapsed && (
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, padding: "8px 12px" }}>
             <Initials name={user?.name || "?"} />

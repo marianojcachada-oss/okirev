@@ -1,3 +1,18 @@
+const THEMES = ["oscuro", "claro", "alto-contraste", "medianoche"];
+const THEME_LABELS = { oscuro: "Oscuro", claro: "Claro", "alto-contraste": "Alto contraste", medianoche: "Medianoche" };
+const THEME_STORAGE_KEY = "oklrev_tracker_theme";
+
+document.documentElement.setAttribute("data-theme", localStorage.getItem(THEME_STORAGE_KEY) || "oscuro");
+
+function cycleTheme() {
+  const current = localStorage.getItem(THEME_STORAGE_KEY) || "oscuro";
+  const next = THEMES[(THEMES.indexOf(current) + 1) % THEMES.length];
+  localStorage.setItem(THEME_STORAGE_KEY, next);
+  document.documentElement.setAttribute("data-theme", next);
+  const btn = $("theme-toggle-btn");
+  if (btn) btn.title = `Tema: ${THEME_LABELS[next]} — clic para cambiar`;
+}
+
 const state = {
   config: null,
   today: [],
@@ -237,7 +252,9 @@ async function handleBreakToggle() {
   try {
     if (state.breakState?.isOnBreak) {
       await apiPost(state.config.apiUrl, "/breaks/end", {}, state.config.sessionToken);
+      await ensureTracking(true); // resume activity tracking now that the break is over
     } else {
+      await ensureTracking(false); // pause activity tracking for the duration of the break — otherwise the foreground app keeps getting logged in parallel with the break, double-counting that time
       await apiPost(state.config.apiUrl, "/breaks/start", {}, state.config.sessionToken);
     }
     await refreshBreakStatus();
@@ -361,6 +378,8 @@ let mainListenersAttached = false;
 
 function initMainView() {
   $("employee-name").textContent = state.config.employeeName || "Operador";
+  const currentTheme = localStorage.getItem(THEME_STORAGE_KEY) || "oscuro";
+  $("theme-toggle-btn").title = `Tema: ${THEME_LABELS[currentTheme]} — clic para cambiar`;
 
   if (!mainListenersAttached) {
     mainListenersAttached = true;
@@ -383,6 +402,8 @@ function initMainView() {
       window.pulso.setCompactMode(isCompact);
       $("compact-toggle-btn").title = isCompact ? "Expandir" : "Modo compacto";
     });
+
+    $("theme-toggle-btn").addEventListener("click", cycleTheme);
 
     window.pulso.onTrackingUpdate(({ app: appLabel }) => {
       $("current-app-label").textContent = appLabel ? `Detectando: ${appLabel}` : "";

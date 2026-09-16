@@ -10,15 +10,28 @@ function isOwnScoped(req) {
   return perms.includes("actividades:own") && !perms.includes("actividades");
 }
 
-function mapRow(row) {
+function mapAggregatedRow(row) {
+  return {
+    employeeId: row.employee_id,
+    employee: row.employee_name,
+    app: row.app,
+    category: row.category,
+    lastOccurredAt: new Date(row.last_occurred_at).toISOString(),
+    durationSeconds: row.duration_seconds,
+    duration: formatDurationSeconds(row.duration_seconds),
+  };
+}
+
+// Used only for POST's response (a single freshly-inserted row) — the GET routes above use
+// the aggregated mapper instead.
+function mapSingleRow(row) {
   return {
     id: row.id,
-    time: new Date(row.occurred_at).toLocaleTimeString("en-US", { hour12: false, timeZone: "America/New_York" }),
     occurredAt: new Date(row.occurred_at).toISOString(),
     employeeId: row.employee_id,
     employee: row.employee_name,
     app: row.app,
-    category: row.effective_category,
+    category: row.category,
     duration: formatDurationSeconds(row.duration_seconds),
     durationSeconds: row.duration_seconds,
   };
@@ -30,9 +43,12 @@ function minutesSinceMidnightAtlanta(date) {
   return h * 60 + m;
 }
 
-// GET /api/activities?date=YYYY-MM-DD (optional; default: latest 200 regardless of date)
-// If the session's role is scoped to "actividades:own", results are forced to that
-// employee's own activity regardless of anything the client asks for.
+// GET /api/activities?date=YYYY-MM-DD | ?from=&to=&employeeId=
+// Returns one row per (employee, app, category) with the duration SUMMED and the most recent
+// occurrence — aggregated in the database instead of shipping every individual raw event for
+// the client to group itself, which used to mean tens of thousands of rows for a busy team.
+// If the session's role is scoped to "actividades:own", results are forced to that employee's
+// own activity regardless of anything the client asks for.
 router.get("/", requireSession, requirePermission("actividades"), async (req, res) => {
   const { date, from, to, employeeId } = req.query;
   const scopedEmployeeId = isOwnScoped(req) ? req.session.employeeId : employeeId || null;
@@ -49,16 +65,18 @@ router.get("/", requireSession, requirePermission("actividades"), async (req, re
   }
   if (scopedEmployeeId) { conditions.push(`a.employee_id = $${i++}`); values.push(scopedEmployeeId); }
   const where = conditions.length ? `where ${conditions.join(" and ")}` : "";
-  const limit = date || (from && to) ? "" : "limit 200";
   const { rows } = await query(
-    `select a.*, ${EFFECTIVE_CATEGORY_SQL} as effective_category
+    `select a.employee_id, a.employee_name, a.app, ${EFFECTIVE_CATEGORY_SQL} as category,
+            sum(a.duration_seconds)::int as duration_seconds, max(a.occurred_at) as last_occurred_at
      from activities a
      left join app_catalog ac on ac.app_label = a.app
      ${where}
-     order by a.occurred_at desc ${limit}`,
+     group by a.employee_id, a.employee_name, a.app, ${EFFECTIVE_CATEGORY_SQL}
+     order by duration_seconds desc
+     limit 500`,
     values
   );
-  res.json(rows.map(mapRow));
+  res.json(rows.map(mapAggregatedRow));
 });
 
 // GET /api/activities/timeline?date=YYYY-MM-DD -- per-employee segments for the 24h chart.
@@ -180,7 +198,7 @@ router.post("/", requireSession, async (req, res) => {
 
   await query("update employees set app = $1 where id = $2", [app, employeeId]);
 
-  res.status(201).json(mapRow(rows[0]));
+  res.status(201).json(mapSingleRow(rows[0]));
 });
 
 export default router;

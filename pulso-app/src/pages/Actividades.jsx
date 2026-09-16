@@ -279,7 +279,9 @@ export default function Actividades() {
   const logQuery = hasEmployeeSelected
     ? `/activities?from=${from}&to=${to}&employeeId=${selectedEmployeeId}`
     : `/activities?date=${to}`;
-  const { data: rawLog, loading: loadingLog, error: errorLog, refetch: refetchLog } = useApi(logQuery);
+  // The backend already aggregates by (employee, app, category) and sums durations, so this
+  // is ready to render directly — no client-side grouping needed.
+  const { data: aggregatedLog, loading: loadingLog, error: errorLog, refetch: refetchLog } = useApi(logQuery);
 
   const loading = (isSingleDay ? timelineApi.loading : hasEmployeeSelected ? timelineByDayApi.loading : summaryApi.loading) || loadingLog;
   const error = (isSingleDay ? timelineApi.error : hasEmployeeSelected ? timelineByDayApi.error : summaryApi.error) || errorLog;
@@ -303,24 +305,6 @@ export default function Actividades() {
       .filter((s) => s.employee)
       .sort((a, b) => a.employee.name.localeCompare(b.employee.name));
   }, [summaryApi.data, employeeById]);
-
-  // Consecutive raw flush events pile up fast (an app switch every few seconds can mean
-  // dozens of rows). The detail table is far more readable grouped by employee+app+category
-  // with the durations summed, instead of one line per individual event.
-  const aggregatedLog = useMemo(() => {
-    const map = new Map();
-    for (const a of rawLog || []) {
-      const key = `${a.employeeId}|${a.app}|${a.category}`;
-      const existing = map.get(key);
-      if (existing) {
-        existing.durationSeconds += a.durationSeconds;
-        if (a.occurredAt > existing.lastOccurredAt) existing.lastOccurredAt = a.occurredAt;
-      } else {
-        map.set(key, { ...a, lastOccurredAt: a.occurredAt });
-      }
-    }
-    return Array.from(map.values()).sort((a, b) => b.durationSeconds - a.durationSeconds);
-  }, [rawLog]);
 
   function selectPreset(id) {
     setPreset(id);

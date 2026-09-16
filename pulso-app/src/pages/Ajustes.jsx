@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Ban, X, Plus, Pencil, Trash2, Shield } from "lucide-react";
-import { COLORS, NAV_ITEMS } from "../theme";
+import { Ban, X, Plus, Pencil, Trash2, Shield, Palette } from "lucide-react";
+import { COLORS, NAV_ITEMS, THEMES } from "../theme";
 import { useApi } from "../hooks/useApi";
 import { api } from "../api/client";
+import { useTheme } from "../context/ThemeContext";
 import { Card, SectionHeading, StateMessage, Modal } from "../components/ui";
 
 const PERMISSION_PAGES = NAV_ITEMS.flatMap((item) =>
@@ -341,6 +342,39 @@ function TrackingConfigsSection() {
   );
 }
 
+function ThemeSection() {
+  const { theme, setTheme } = useTheme();
+
+  return (
+    <Card>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+        <Palette size={16} color={COLORS.textSecondary} />
+        <SectionHeading>Tema del panel</SectionHeading>
+      </div>
+      <p style={{ fontSize: 12.5, color: COLORS.textTertiary, margin: "0 0 14px" }}>
+        Es una preferencia de esta computadora/navegador — cada persona puede elegir el suyo, no afecta a nadie más.
+      </p>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        {THEMES.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTheme(t.id)}
+            className="chip-btn"
+            style={{
+              padding: "8px 16px", borderRadius: 10, fontSize: 13, cursor: "pointer",
+              border: `1px solid ${theme === t.id ? COLORS.brand : COLORS.border}`,
+              background: theme === t.id ? "rgba(108,123,255,0.14)" : "transparent",
+              color: theme === t.id ? COLORS.textPrimary : COLORS.textSecondary,
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 export default function Ajustes() {
   const { data: settings, loading, error, refetch } = useApi("/settings");
   const [newApp, setNewApp] = useState("");
@@ -381,6 +415,7 @@ export default function Ajustes() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18, maxWidth: 640 }}>
+      <ThemeSection />
       <Card>
         <SectionHeading>Datos de la empresa</SectionHeading>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>

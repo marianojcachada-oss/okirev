@@ -3,19 +3,30 @@ import {
   FolderKanban, BarChart2, Settings, AlertTriangle, AlertCircle, CheckCircle2, LibraryBig,
 } from "lucide-react";
 
+// Every value here is a CSS variable reference, not a fixed color — the ACTUAL colors live in
+// index.css (one block per theme, switched via a data-theme attribute on <html>). Every
+// component in the app already reads colors through this object, so theming the whole app
+// only required this one file plus the CSS — no per-screen changes.
 export const COLORS = {
-  bg: "#12141A",
-  surface: "#1B1E27",
-  surfaceHover: "#232733",
-  border: "#2A2E3A",
-  textPrimary: "#F1F2F4",
-  textSecondary: "#9498A6",
-  textTertiary: "#6B6F7D",
-  live: "#2DD4A7",
-  warn: "#F5A623",
-  critical: "#F0555A",
-  brand: "#6C7BFF",
+  bg: "var(--color-bg)",
+  surface: "var(--color-surface)",
+  surfaceHover: "var(--color-surface-hover)",
+  border: "var(--color-border)",
+  textPrimary: "var(--color-text-primary)",
+  textSecondary: "var(--color-text-secondary)",
+  textTertiary: "var(--color-text-tertiary)",
+  live: "var(--color-live)",
+  warn: "var(--color-warn)",
+  critical: "var(--color-critical)",
+  brand: "var(--color-brand)",
 };
+
+export const THEMES = [
+  { id: "oscuro", label: "Oscuro" },
+  { id: "claro", label: "Claro" },
+  { id: "alto-contraste", label: "Alto contraste" },
+  { id: "medianoche", label: "Medianoche" },
+];
 
 export const STATUS_META = {
   activo: { label: "Activo", color: COLORS.live },

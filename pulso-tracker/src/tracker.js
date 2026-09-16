@@ -10,6 +10,39 @@ const execFileAsync = promisify(execFile);
 
 const BROWSER_PROCESSES = ["chrome", "msedge", "firefox", "brave", "opera"];
 
+// Friendly names for the sites this dispatch team uses most — shown instead of the raw
+// hostname. Anything not listed here falls back to a title-cased guess from the hostname.
+const SITE_NAMES = {
+  "teams.cloud.microsoft": "Microsoft Teams",
+  "teams.microsoft.com": "Microsoft Teams",
+  "www.youtube.com": "Youtube",
+  "youtube.com": "Youtube",
+  "make.powerautomate.com": "Microsoft Power Automate",
+  "app.taxicaller.net": "Taxi caller",
+  "outlook.office.com": "Outlook",
+  "outlook.live.com": "Outlook",
+  "mail.google.com": "Gmail",
+  "drive.google.com": "Google Drive",
+  "docs.google.com": "Google Docs",
+  "web.whatsapp.com": "WhatsApp",
+  "www.instagram.com": "Instagram",
+  "www.facebook.com": "Facebook",
+  "app.ringcentral.com": "RingCentral",
+};
+
+function friendlySiteName(hostname) {
+  if (SITE_NAMES[hostname]) return SITE_NAMES[hostname];
+  const mainLabel = hostname.replace(/^www\./, "").split(".")[0];
+  return mainLabel.charAt(0).toUpperCase() + mainLabel.slice(1);
+}
+
+// "Browser - Nombre del sitio - https://hostname" — the root URL only (no path, no query
+// string), so every visit to the same site produces the exact same label. Using the full URL
+// with paths/params here would blow up the app catalog into one entry per unique page visited.
+function browserActivityLabel(browserName, hostname) {
+  return `${browserName} - ${friendlySiteName(hostname)} - https://${hostname}`;
+}
+
 const POLL_MS = 10000; // check the active window every 10s
 const FORCE_FLUSH_MS = 60000; // send a partial update at least every 60s, even mid-session
 const MIN_SEGMENT_MS = 3000; // ignore slivers shorter than this (noise from rapid app-switching)
@@ -114,7 +147,7 @@ async function tick() {
       const isBrowser = BROWSER_PROCESSES.some((p) => win.app.toLowerCase().includes(p));
       if (isBrowser) {
         const tab = getCurrentBrowserTab();
-        label = tab ? `${win.app} — ${tab.hostname}` : win.app;
+        label = tab ? browserActivityLabel(win.app, tab.hostname) : win.app;
       } else {
         label = win.app;
       }
