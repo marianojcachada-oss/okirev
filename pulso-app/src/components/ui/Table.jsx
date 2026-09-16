@@ -10,6 +10,10 @@ export function Th({ children, align = "left" }) {
         color: COLORS.textTertiary,
         padding: "0 14px 10px",
         borderBottom: `1px solid ${COLORS.border}`,
+        position: "sticky",
+        top: 0,
+        zIndex: 1,
+        background: COLORS.surface,
       }}
     >
       {children}

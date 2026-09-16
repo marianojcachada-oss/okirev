@@ -5,6 +5,7 @@ import { useApi } from "../hooks/useApi";
 import { api } from "../api/client";
 import { Card, StatusPill, Initials, Th, Td, StateMessage, Modal } from "../components/ui";
 import { formatDuration } from "../utils/duration";
+import { DATE_PRESETS, computeRange, atlantaToday } from "../utils/dateRanges";
 
 function DurationMetric({ seconds, color }) {
   return (
@@ -359,9 +360,15 @@ export default function Empleados() {
   const [formModal, setFormModal] = useState(null); // null | "create" | employee object
   const [bulkModal, setBulkModal] = useState(false);
   const [passwordModal, setPasswordModal] = useState(null); // null | employee object
+  const [preset, setPreset] = useState("hoy");
+  const [isCustom, setIsCustom] = useState(false);
+  const [customFrom, setCustomFrom] = useState(atlantaToday());
+  const [customTo, setCustomTo] = useState(atlantaToday());
+
+  const { from, to } = isCustom ? { from: customFrom, to: customTo } : computeRange(preset);
 
   const { data: employees, loading: loadingEmployees, error: errorEmployees, refetch } = useApi("/employees");
-  const { data: summary, loading: loadingSummary, error: errorSummary } = useApi("/employees/summary");
+  const { data: summary, loading: loadingSummary, error: errorSummary } = useApi(`/employees/summary?from=${from}&to=${to}`);
   const { data: attendanceToday, loading: loadingAttendance, error: errorAttendance } = useApi("/attendance/today");
   const { data: teams } = useApi("/teams/full");
   const { data: roles } = useApi("/roles");
@@ -418,6 +425,32 @@ export default function Empleados() {
 
   return (
     <div>
+      <Card style={{ marginBottom: 18 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          {DATE_PRESETS.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => { setPreset(p.id); setIsCustom(false); }}
+              className="chip-btn"
+              style={{
+                padding: "6px 13px", borderRadius: 20, fontSize: 12.5, cursor: "pointer",
+                border: `1px solid ${!isCustom && preset === p.id ? COLORS.brand : COLORS.border}`,
+                background: !isCustom && preset === p.id ? "rgba(108,123,255,0.14)" : "transparent",
+                color: !isCustom && preset === p.id ? COLORS.textPrimary : COLORS.textSecondary,
+              }}
+            >
+              {p.label}
+            </button>
+          ))}
+          <span style={{ fontSize: 12.5, color: COLORS.textSecondary, marginLeft: 4 }}>o un rango:</span>
+          <input type="date" value={customFrom} max={atlantaToday()} onChange={(e) => { setCustomFrom(e.target.value); setIsCustom(true); }}
+            style={{ background: COLORS.bg, border: `1px solid ${isCustom ? COLORS.brand : COLORS.border}`, borderRadius: 8, padding: "7px 10px", color: COLORS.textPrimary, fontSize: 12.5 }} />
+          <span style={{ color: COLORS.textTertiary, fontSize: 12.5 }}>hasta</span>
+          <input type="date" value={customTo} max={atlantaToday()} onChange={(e) => { setCustomTo(e.target.value); setIsCustom(true); }}
+            style={{ background: COLORS.bg, border: `1px solid ${isCustom ? COLORS.brand : COLORS.border}`, borderRadius: 8, padding: "7px 10px", color: COLORS.textPrimary, fontSize: 12.5 }} />
+        </div>
+      </Card>
+
       <div style={{ marginBottom: 18, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
         <div style={{ position: "relative", maxWidth: 320, flex: 1, minWidth: 220 }}>
           <Search size={15} style={{ position: "absolute", left: 12, top: 10, color: COLORS.textTertiary }} />
@@ -455,7 +488,7 @@ export default function Empleados() {
       </div>
 
       <Card style={{ padding: 0 }}>
-        <div style={{ overflowX: "auto" }}>
+        <div style={{ overflowX: "auto", overflowY: "visible" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1360 }}>
             <thead>
               <tr>

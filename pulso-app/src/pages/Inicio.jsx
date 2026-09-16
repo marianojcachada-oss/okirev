@@ -13,17 +13,18 @@ export default function Inicio() {
   const { data: alerts, loading: loadingAlerts, error: errorAlerts } = useApi("/alerts");
   const { data: activityChart, loading: loadingChart, error: errorChart } = useApi("/reports/activity-chart");
   const { data: teams, loading: loadingTeams, error: errorTeams } = useApi("/teams");
+  const { data: summary, loading: loadingSummary, error: errorSummary } = useApi("/employees/summary");
 
-  const loading = loadingEmployees || loadingAlerts || loadingChart || loadingTeams;
-  const error = errorEmployees || errorAlerts || errorChart || errorTeams;
+  const loading = loadingEmployees || loadingAlerts || loadingChart || loadingTeams || loadingSummary;
+  const error = errorEmployees || errorAlerts || errorChart || errorTeams || errorSummary;
 
   const activeCount = useMemo(() => (employees ? employees.filter((e) => e.status === "activo").length : 0), [employees]);
   const pausaCount = useMemo(() => (employees ? employees.filter((e) => e.status === "pausa").length : 0), [employees]);
   const ausenteCount = useMemo(() => (employees ? employees.filter((e) => e.status === "ausente").length : 0), [employees]);
   const openAlerts = useMemo(() => (alerts ? alerts.filter((a) => a.status === "abierta").length : 0), [alerts]);
   const totalHoras = useMemo(
-    () => (employees ? employees.reduce((s, e) => s + e.hoursToday, 0).toFixed(0) : "0"),
-    [employees]
+    () => (summary ? (summary.reduce((s, e) => s + e.workedSeconds, 0) / 3600).toFixed(0) : "0"),
+    [summary]
   );
 
   if (loading || error) return <StateMessage loading={loading} error={error} onRetry={refetchEmployees} />;

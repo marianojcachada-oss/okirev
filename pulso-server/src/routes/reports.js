@@ -6,16 +6,21 @@ const router = Router();
 
 const BROWSER_LIKE = ["chrome", "msedge", "edge", "firefox", "outlook", "teams", "slack", "whatsapp"];
 
-// GET /api/reports/apps -> hours per app, aggregated from real activity records.
+// GET /api/reports/apps?from=&to= -> hours per app, aggregated from real activity records.
+// Without from/to, aggregates across all recorded history (previous behavior).
 router.get("/apps", requireSession, requirePermission("informes-apps"), async (req, res) => {
+  const { from, to } = req.query;
+  const dateFilter = from && to ? `and (a.occurred_at at time zone 'America/New_York')::date between $1 and $2` : "";
+  const values = from && to ? [from, to] : [];
   const { rows } = await query(
     `select a.app, ${EFFECTIVE_CATEGORY_SQL} as category, sum(a.duration_seconds) as seconds
      from activities a
      left join app_catalog ac on ac.app_label = a.app
-     where ${EFFECTIVE_CATEGORY_SQL} in ('Productiva', 'Improductiva')
+     where ${EFFECTIVE_CATEGORY_SQL} in ('Productiva', 'Improductiva') ${dateFilter}
      group by a.app, ${EFFECTIVE_CATEGORY_SQL}
      order by seconds desc
-     limit 20`
+     limit 20`,
+    values
   );
   res.json(
     rows.map((r) => ({

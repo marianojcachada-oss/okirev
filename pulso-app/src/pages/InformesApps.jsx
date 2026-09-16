@@ -1,15 +1,51 @@
+import { useState } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { COLORS } from "../theme";
 import { useApi } from "../hooks/useApi";
 import { Card, SectionHeading, Th, Td, StateMessage } from "../components/ui";
+import { DATE_PRESETS, computeRange, atlantaToday } from "../utils/dateRanges";
 
 export default function InformesApps() {
-  const { data: appReport, loading, error, refetch } = useApi("/reports/apps");
+  const [preset, setPreset] = useState("todo-el-anio");
+  const [isCustom, setIsCustom] = useState(false);
+  const [customFrom, setCustomFrom] = useState(atlantaToday());
+  const [customTo, setCustomTo] = useState(atlantaToday());
+
+  const { from, to } = isCustom ? { from: customFrom, to: customTo } : computeRange(preset);
+  const activePreset = DATE_PRESETS.find((p) => p.id === preset);
+
+  const { data: appReport, loading, error, refetch } = useApi(`/reports/apps?from=${from}&to=${to}`);
 
   if (loading || error) return <StateMessage loading={loading} error={error} onRetry={refetch} />;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <Card>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          {DATE_PRESETS.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => { setPreset(p.id); setIsCustom(false); }}
+              className="chip-btn"
+              style={{
+                padding: "6px 13px", borderRadius: 20, fontSize: 12.5, cursor: "pointer",
+                border: `1px solid ${!isCustom && preset === p.id ? COLORS.brand : COLORS.border}`,
+                background: !isCustom && preset === p.id ? "rgba(108,123,255,0.14)" : "transparent",
+                color: !isCustom && preset === p.id ? COLORS.textPrimary : COLORS.textSecondary,
+              }}
+            >
+              {p.label}
+            </button>
+          ))}
+          <span style={{ fontSize: 12.5, color: COLORS.textSecondary, marginLeft: 4 }}>o un rango:</span>
+          <input type="date" value={customFrom} max={atlantaToday()} onChange={(e) => { setCustomFrom(e.target.value); setIsCustom(true); }}
+            style={{ background: COLORS.bg, border: `1px solid ${isCustom ? COLORS.brand : COLORS.border}`, borderRadius: 8, padding: "7px 10px", color: COLORS.textPrimary, fontSize: 12.5 }} />
+          <span style={{ color: COLORS.textTertiary, fontSize: 12.5 }}>hasta</span>
+          <input type="date" value={customTo} max={atlantaToday()} onChange={(e) => { setCustomTo(e.target.value); setIsCustom(true); }}
+            style={{ background: COLORS.bg, border: `1px solid ${isCustom ? COLORS.brand : COLORS.border}`, borderRadius: 8, padding: "7px 10px", color: COLORS.textPrimary, fontSize: 12.5 }} />
+        </div>
+      </Card>
+
       <Card>
         <SectionHeading>Horas por aplicación</SectionHeading>
         <div style={{ height: 260 }}>
@@ -34,7 +70,7 @@ export default function InformesApps() {
             <tr>
               <Th>Aplicación</Th>
               <Th>Categoría</Th>
-              <Th align="right">Horas esta semana</Th>
+              <Th align="right">Horas · {isCustom ? "rango elegido" : activePreset?.label.toLowerCase()}</Th>
             </tr>
           </thead>
           <tbody>
@@ -51,6 +87,9 @@ export default function InformesApps() {
                 </Td>
               </tr>
             ))}
+            {appReport.length === 0 && (
+              <tr><Td colSpan={3}><span style={{ color: COLORS.textTertiary }}>Sin actividad productiva/improductiva en este rango.</span></Td></tr>
+            )}
           </tbody>
         </table>
       </Card>
