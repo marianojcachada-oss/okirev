@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { query, EFFECTIVE_CATEGORY_SQL } from "../db.js";
+import { query, EFFECTIVE_CATEGORY_SQL, WITHIN_ATTENDANCE_SQL } from "../db.js";
 import { requireSession, requirePermission } from "../middleware/requireSession.js";
 
 const router = Router();
@@ -16,16 +16,17 @@ router.get("/apps", requireSession, requirePermission("informes-apps"), async (r
     `select a.app, ${EFFECTIVE_CATEGORY_SQL} as category, sum(a.duration_seconds) as seconds
      from activities a
      left join app_catalog ac on ac.app_label = a.app
-     where ${EFFECTIVE_CATEGORY_SQL} in ('Productiva', 'Improductiva') ${dateFilter}
+     where ${EFFECTIVE_CATEGORY_SQL} in ('Productiva', 'Improductiva', 'Neutral') ${dateFilter} and ${WITHIN_ATTENDANCE_SQL}
      group by a.app, ${EFFECTIVE_CATEGORY_SQL}
      order by seconds desc
-     limit 20`,
+     limit 50`,
     values
   );
   res.json(
     rows.map((r) => ({
       name: r.app,
       category: r.category,
+      seconds: Number(r.seconds),
       hours: Math.round((r.seconds / 3600) * 10) / 10,
     }))
   );
