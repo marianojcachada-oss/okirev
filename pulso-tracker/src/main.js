@@ -11,7 +11,7 @@ let tray;
 let isQuitting = false;
 
 const FULL_SIZE = { width: 380, height: 640 };
-const COMPACT_SIZE = { width: 300, height: 190 };
+const COMPACT_SIZE = { width: 300, height: 210 };
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -22,10 +22,13 @@ function createWindow() {
     title: "OKlrev Tracker",
     icon: path.join(__dirname, "..", "build", "icon.ico"),
     backgroundColor: "#12141A",
+    titleBarStyle: "hidden",
+    titleBarOverlay: { color: "#12141A", symbolColor: "#F1F2F4", height: 40 },
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      backgroundThrottling: false,
     },
   });
 
@@ -127,6 +130,20 @@ ipcMain.handle("window:set-compact-mode", (_event, compact) => {
   mainWindow.setResizable(true); // setSize can be finicky on a non-resizable window on some platforms
   mainWindow.setSize(size.width, size.height);
   mainWindow.setResizable(false);
+  return true;
+});
+
+const TITLEBAR_COLORS = {
+  oscuro: { color: "#12141a", symbolColor: "#f1f2f4" },
+  claro: { color: "#ffffff", symbolColor: "#171923" },
+  "alto-contraste": { color: "#000000", symbolColor: "#ffffff" },
+  medianoche: { color: "#121a35", symbolColor: "#e9ebff" },
+};
+
+ipcMain.handle("window:set-theme", (_event, themeId) => {
+  if (!mainWindow) return false;
+  const colors = TITLEBAR_COLORS[themeId] || TITLEBAR_COLORS.oscuro;
+  mainWindow.setTitleBarOverlay({ ...colors, height: 40 });
   return true;
 });
 

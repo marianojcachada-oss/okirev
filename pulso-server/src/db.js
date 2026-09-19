@@ -104,3 +104,17 @@ export const EFFECTIVE_CATEGORY_SQL = `
     else coalesce(a.category, 'Neutral')
   end
 `;
+
+// Constrains an activities row (aliased "a") to only count if it happened DURING a real
+// clocked-in window — i.e., "Actividad" (and everything derived from it: Productivo,
+// Improductivo, Neutral, Inactivo) is a breakdown OF worked time, never something that can
+// exceed it. Without this, a tracker bug (or a gap between shifts) could keep logging activity
+// outside any attendance block, inflating totals past what was actually clocked.
+export const WITHIN_ATTENDANCE_SQL = `
+  exists (
+    select 1 from attendance att
+    where att.employee_id = a.employee_id
+      and a.occurred_at >= att.check_in_at
+      and a.occurred_at <= coalesce(att.check_out_at, now())
+  )
+`;

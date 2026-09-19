@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { query, newId, formatDurationSeconds, parseDurationToSeconds, EFFECTIVE_CATEGORY_SQL } from "../db.js";
+import { query, newId, formatDurationSeconds, parseDurationToSeconds, EFFECTIVE_CATEGORY_SQL, WITHIN_ATTENDANCE_SQL } from "../db.js";
 import { requireSession, requirePermission } from "../middleware/requireSession.js";
 
 const router = Router();
@@ -64,6 +64,7 @@ router.get("/", requireSession, requirePermission("actividades"), async (req, re
     values.push(from, to);
   }
   if (scopedEmployeeId) { conditions.push(`a.employee_id = $${i++}`); values.push(scopedEmployeeId); }
+  conditions.push(WITHIN_ATTENDANCE_SQL);
   const where = conditions.length ? `where ${conditions.join(" and ")}` : "";
   const { rows } = await query(
     `select a.employee_id, a.employee_name, a.app, ${EFFECTIVE_CATEGORY_SQL} as category,
@@ -96,6 +97,7 @@ router.get("/timeline", requireSession, requirePermission("actividades"), async 
      left join app_catalog ac on ac.app_label = a.app
      where (a.occurred_at at time zone 'America/New_York')::date = $1
        and ($2::text is null or a.employee_id = $2)
+       and ${WITHIN_ATTENDANCE_SQL}
      order by a.employee_id, a.occurred_at`,
     [date, scopedEmployeeId]
   );
@@ -142,6 +144,7 @@ router.get("/timeline-by-day", requireSession, requirePermission("actividades"),
      left join app_catalog ac on ac.app_label = a.app
      where a.employee_id = $1
        and (a.occurred_at at time zone 'America/New_York')::date between $2 and $3
+       and ${WITHIN_ATTENDANCE_SQL}
      order by a.occurred_at`,
     [employeeId, from, to]
   );

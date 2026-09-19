@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld("pulso", {
   updateTrackingSettings: (payload) => ipcRenderer.invoke("tracking:update-settings", payload),
   minimizeToTray: () => ipcRenderer.invoke("window:minimize-to-tray"),
   setCompactMode: (compact) => ipcRenderer.invoke("window:set-compact-mode", compact),
+  setWindowTheme: (themeId) => ipcRenderer.invoke("window:set-theme", themeId),
   onTrackingUpdate: (callback) => {
     ipcRenderer.on("tracking:update", (_event, data) => callback(data));
   },

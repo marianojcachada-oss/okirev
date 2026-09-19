@@ -2,13 +2,16 @@ const THEMES = ["oscuro", "claro", "alto-contraste", "medianoche"];
 const THEME_LABELS = { oscuro: "Oscuro", claro: "Claro", "alto-contraste": "Alto contraste", medianoche: "Medianoche" };
 const THEME_STORAGE_KEY = "oklrev_tracker_theme";
 
-document.documentElement.setAttribute("data-theme", localStorage.getItem(THEME_STORAGE_KEY) || "oscuro");
+const initialTheme = localStorage.getItem(THEME_STORAGE_KEY) || "oscuro";
+document.documentElement.setAttribute("data-theme", initialTheme);
+window.pulso.setWindowTheme(initialTheme);
 
 function cycleTheme() {
   const current = localStorage.getItem(THEME_STORAGE_KEY) || "oscuro";
   const next = THEMES[(THEMES.indexOf(current) + 1) % THEMES.length];
   localStorage.setItem(THEME_STORAGE_KEY, next);
   document.documentElement.setAttribute("data-theme", next);
+  window.pulso.setWindowTheme(next);
   const btn = $("theme-toggle-btn");
   if (btn) btn.title = `Tema: ${THEME_LABELS[next]} — clic para cambiar`;
 }
@@ -223,6 +226,10 @@ function renderBreakDisplay() {
   if (remaining <= 0 && b.isOnBreak && !state.breakRang) {
     state.breakRang = true;
     playBell();
+    // El break se corta solo al llegar al límite configurado (no hace falta que el operador
+    // haga clic) y retoma el trackeo normal — a partir de ahí, si sigue sin hacer nada, el
+    // detector de inactividad de siempre es el que se encarga de marcarlo como Inactivo.
+    endBreak().catch((err) => console.error("No se pudo cerrar el break automáticamente:", err.message));
   }
   if (remaining > 0) state.breakRang = false;
 
@@ -246,20 +253,26 @@ async function refreshBreakStatus() {
   }
 }
 
+async function endBreak() {
+  await apiPost(state.config.apiUrl, "/breaks/end", {}, state.config.sessionToken);
+  await ensureTracking(true); // resume activity tracking now that the break is over
+  await refreshBreakStatus();
+}
+
 async function handleBreakToggle() {
   const btn = $("break-btn");
   btn.disabled = true;
   try {
     if (state.breakState?.isOnBreak) {
-      await apiPost(state.config.apiUrl, "/breaks/end", {}, state.config.sessionToken);
-      await ensureTracking(true); // resume activity tracking now that the break is over
+      await endBreak();
     } else {
       await ensureTracking(false); // pause activity tracking for the duration of the break — otherwise the foreground app keeps getting logged in parallel with the break, double-counting that time
       await apiPost(state.config.apiUrl, "/breaks/start", {}, state.config.sessionToken);
+      await refreshBreakStatus();
     }
-    await refreshBreakStatus();
   } catch (err) {
     alert(err.message);
+  } finally {
     btn.disabled = !isCheckedIn();
   }
 }

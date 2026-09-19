@@ -1,6 +1,6 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
-import { query, newId, todayDateStr, nowHM, EFFECTIVE_CATEGORY_SQL } from "../db.js";
+import { query, newId, todayDateStr, nowHM, EFFECTIVE_CATEGORY_SQL, WITHIN_ATTENDANCE_SQL } from "../db.js";
 import { requireSession, requirePermission } from "../middleware/requireSession.js";
 
 const router = Router();
@@ -96,6 +96,7 @@ router.get("/:id/daily-summary", requireSession, requirePermission("empleados", 
        from activities a
        left join app_catalog ac on ac.app_label = a.app
        where a.employee_id = $1 and (a.occurred_at at time zone 'America/New_York')::date between $2 and $3
+         and ${WITHIN_ATTENDANCE_SQL}
        group by day, ${EFFECTIVE_CATEGORY_SQL}`,
       [req.params.id, from, to]
     ),
@@ -188,6 +189,7 @@ router.get("/summary", requireSession, requirePermission("empleados", "asistenci
        left join app_catalog ac on ac.app_label = a.app
        where (a.occurred_at at time zone 'America/New_York')::date between $1 and $2
          and ($3::text is null or a.employee_id = $3)
+         and ${WITHIN_ATTENDANCE_SQL}
        group by a.employee_id, ${EFFECTIVE_CATEGORY_SQL}`,
       [from, to, scopedEmployeeId]
     ),

@@ -50,15 +50,21 @@ router.get("/", requireSession, requirePermission("asistencia"), async (req, res
 // GET /api/attendance/today -- all employees' blocks for today (dashboard only, Empleados page)
 router.get("/today", requireSession, requirePermission("empleados"), async (req, res) => {
   const today = todayDateStr();
-  const { rows } = await query("select * from attendance where date = $1 order by check_in_at", [today]);
+  const { rows } = await query(
+    "select * from attendance where date = $1 or check_out_at is null order by check_in_at",
+    [today]
+  );
   res.json(rows.map(mapRow));
 });
 
 // GET /api/attendance/today/:employeeId -- convenience for the desktop tracker app
 router.get("/today/:employeeId", async (req, res) => {
   const today = todayDateStr();
+  // Además de los bloques de hoy, incluye cualquier bloque TODAVÍA ABIERTO sin importar su
+  // fecha — así un turno que arrancó ayer y sigue en curso (por ejemplo 8 PM a 4 AM) no
+  // "desaparece" de la vista del tracker apenas cruza la medianoche de Atlanta.
   const { rows } = await query(
-    "select * from attendance where employee_id = $1 and date = $2 order by check_in_at",
+    "select * from attendance where employee_id = $1 and (date = $2 or check_out_at is null) order by check_in_at",
     [req.params.employeeId, today]
   );
   res.json(rows.map(mapRow));

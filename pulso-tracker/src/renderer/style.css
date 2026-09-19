@@ -72,11 +72,16 @@ html, body {
   font-family: "Inter", system-ui, sans-serif;
   overflow: hidden;
   user-select: none;
+  -webkit-app-region: drag;
+}
+
+input, textarea, button, a, select {
+  -webkit-app-region: no-drag;
 }
 
 .view {
   height: 100%;
-  padding: 20px;
+  padding: 44px 20px 20px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -126,16 +131,21 @@ h1 { font-family: "Space Grotesk", sans-serif; font-size: 17px; font-weight: 600
 .fineprint { font-size: 10.5px; color: var(--color-text-tertiary); line-height: 1.5; margin-top: auto; }
 
 /* Main view */
-.header { display: flex; align-items: center; justify-content: space-between; }
+.header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-right: 96px; /* espacio para los botones nativos de minimizar/cerrar (overlay) */
+  -webkit-app-region: drag;
+}
 .icon-btn {
   background: none; border: 1px solid var(--color-border); border-radius: 8px;
   width: 28px; height: 28px; color: var(--color-text-secondary); cursor: pointer; font-size: 13px;
+  -webkit-app-region: no-drag;
 }
-.header-actions { display: flex; align-items: center; gap: 6px; }
+.header-actions { display: flex; align-items: center; gap: 6px; -webkit-app-region: no-drag; }
 .employee-name { font-size: 13px; color: var(--color-text-secondary); }
 
 body.compact-mode .full-only { display: none !important; }
-body.compact-mode .view { padding: 14px; gap: 8px; }
+body.compact-mode .view { padding: 44px 14px 14px; gap: 8px; }
 body.compact-mode .status-card { padding: 12px; }
 
 .confirm-overlay {
