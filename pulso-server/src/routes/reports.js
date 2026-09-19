@@ -4,8 +4,6 @@ import { requireSession, requirePermission } from "../middleware/requireSession.
 
 const router = Router();
 
-const BROWSER_LIKE = ["chrome", "msedge", "edge", "firefox", "outlook", "teams", "slack", "whatsapp"];
-
 // GET /api/reports/apps?from=&to= -> hours per app, aggregated from real activity records.
 // Without from/to, aggregates across all recorded history (previous behavior).
 router.get("/apps", requireSession, requirePermission("informes-apps"), async (req, res) => {
@@ -35,21 +33,29 @@ router.get("/apps", requireSession, requirePermission("informes-apps"), async (r
 // GET /api/reports/web -> same idea, filtered to browser/communication-looking process names.
 // NOTE: without a browser extension we only see the process name + window title, so this is
 // an approximation until real domain-level tracking exists.
+// GET /api/reports/web?from=&to= -> hours per website, aggregated from real activity records.
+// "Web" means the app label actually carries a real URL (our browser format is
+// "Navegador - Sitio - https://hostname") — a much more reliable signal than guessing from a
+// hardcoded list of browser process names, which used to miss Opera entirely.
 router.get("/web", requireSession, requirePermission("informes-web"), async (req, res) => {
+  const { from, to } = req.query;
+  const dateFilter = from && to ? `and (a.occurred_at at time zone 'America/New_York')::date between $1 and $2` : "";
+  const values = from && to ? [from, to] : [];
   const { rows } = await query(
     `select a.app, ${EFFECTIVE_CATEGORY_SQL} as category, sum(a.duration_seconds) as seconds
      from activities a
      left join app_catalog ac on ac.app_label = a.app
-     where lower(a.app) like any ($1)
+     where a.app ~* 'https?://' ${dateFilter} and ${WITHIN_ATTENDANCE_SQL}
      group by a.app, ${EFFECTIVE_CATEGORY_SQL}
      order by seconds desc
-     limit 20`,
-    [BROWSER_LIKE.map((s) => `%${s}%`)]
+     limit 50`,
+    values
   );
   res.json(
     rows.map((r) => ({
       name: r.app,
-      category: r.category === "Productiva" ? "Comunicación" : "No autorizada",
+      category: r.category,
+      seconds: Number(r.seconds),
       hours: Math.round((r.seconds / 3600) * 10) / 10,
     }))
   );
