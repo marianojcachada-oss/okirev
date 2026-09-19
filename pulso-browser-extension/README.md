@@ -12,12 +12,15 @@ el navegador", sabe "estás en youtube.com").
 
 ## Instalar (modo desarrollador — para probarla)
 
-1. Abrí `chrome://extensions` (o `edge://extensions` en Edge).
+1. Abrí `chrome://extensions` (o `edge://extensions` en Edge, o `opera://extensions` en Opera).
 2. Activá "Modo de desarrollador" (interruptor arriba a la derecha).
 3. Click en "Cargar descomprimida" / "Load unpacked".
 4. Elegí esta carpeta (`pulso-browser-extension`).
 5. Listo — no hace falta reiniciar el navegador. Cambiá de pestaña y `OKlrev Tracker` ya
    debería empezar a mostrar el sitio en su indicador "Detectando: …".
+
+Hay que instalarla por separado en **cada navegador** que uses (Chrome, Edge y Opera cuentan
+como tres instalaciones distintas, aunque sea la misma carpeta) y en cada computadora.
 
 ## Repartirla a todos los operadores sin modo desarrollador
 

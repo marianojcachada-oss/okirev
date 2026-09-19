@@ -37,14 +37,13 @@ function HourAxis() {
 
 function TimelineRow({ employeeName, segments }) {
   const trackedMinutes = segments.reduce((sum, s) => sum + (s.endMinutes - s.startMinutes), 0);
-  const utilization = Math.round((trackedMinutes / 1440) * 100);
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 0" }}>
       <div style={{ width: 188, flexShrink: 0, display: "flex", alignItems: "center", gap: 8 }}>
         <Initials name={employeeName} />
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 12.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{employeeName}</div>
-          <div className="pulso-mono" style={{ fontSize: 10.5, color: COLORS.textTertiary }}>{utilization}% del día</div>
+          <div className="pulso-mono" style={{ fontSize: 10.5, color: COLORS.textTertiary }}>{formatDuration(trackedMinutes * 60)}</div>
         </div>
       </div>
       <div
@@ -77,14 +76,13 @@ const WEEKDAY_LABELS = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
 // day gets its own real timeline (not just a proportional summary bar).
 function DayTimelineRow({ date, segments }) {
   const trackedMinutes = segments.reduce((sum, s) => sum + (s.endMinutes - s.startMinutes), 0);
-  const utilization = Math.round((trackedMinutes / 1440) * 100);
   const d = new Date(`${date}T12:00:00`); // noon to dodge any tz rounding into the wrong day
   const label = `${WEEKDAY_LABELS[d.getDay()]} ${d.getDate()}`;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 0" }}>
       <div style={{ width: 188, flexShrink: 0 }}>
         <div style={{ fontSize: 12.5 }}>{label}</div>
-        <div className="pulso-mono" style={{ fontSize: 10.5, color: COLORS.textTertiary }}>{utilization}% del día</div>
+        <div className="pulso-mono" style={{ fontSize: 10.5, color: COLORS.textTertiary }}>{formatDuration(trackedMinutes * 60)}</div>
       </div>
       <div
         style={{
@@ -258,6 +256,31 @@ function AppsSummary({ aggregatedLog }) {
   );
 }
 
+function TopAppsCard({ aggregatedLog }) {
+  if (aggregatedLog.length === 0) return null;
+  const top3 = aggregatedLog.slice(0, 3);
+  const totalSeconds = aggregatedLog.reduce((s, a) => s + a.durationSeconds, 0);
+  return (
+    <Card>
+      <div style={{ fontSize: 12.5, color: COLORS.textSecondary, marginBottom: 4 }}>Tiempo activo</div>
+      <div className="pulso-display" style={{ fontSize: 22, fontWeight: 700, marginBottom: 16 }}>{formatDuration(totalSeconds)}</div>
+      <div style={{ fontSize: 12.5, color: COLORS.textSecondary, marginBottom: 10 }}>Top 3 aplicaciones más usadas</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {top3.map((a, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: CATEGORY_COLORS[a.category] || COLORS.textTertiary, flexShrink: 0 }} />
+            <span style={{ fontSize: 13, flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{a.app}</span>
+            <span style={{ fontSize: 11.5, color: CATEGORY_COLORS[a.category] || COLORS.textTertiary, flexShrink: 0 }}>
+              {CATEGORY_LABELS[a.category] || a.category}
+            </span>
+            <span className="pulso-mono" style={{ fontSize: 12.5, color: COLORS.textSecondary, flexShrink: 0 }}>{a.duration}</span>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 export default function Actividades() {
   const today = atlantaToday();
   const [preset, setPreset] = useState("hoy");
@@ -364,6 +387,7 @@ export default function Actividades() {
         </div>
       </Card>
 
+      {hasEmployeeSelected && <TopAppsCard aggregatedLog={aggregatedLog} />}
       <CategorySummary aggregatedLog={aggregatedLog} />
       <AppsSummary aggregatedLog={aggregatedLog} />
 
