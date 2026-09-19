@@ -182,7 +182,12 @@ router.post("/", requireSession, async (req, res) => {
   if (!employee) return res.status(404).json({ error: "Empleado no encontrado" });
 
   // Register the app in the catalog the first time it's seen (no-op if it's already there).
-  await query("insert into app_catalog (app_label) values ($1) on conflict (app_label) do nothing", [app]);
+  // No crea entradas nuevas en el catálogo con el formato viejo (separador "—", de antes de
+  // que la app arme el nombre a partir del navegador/sitio/URL) — así, aunque algún operador
+  // todavía tenga una versión vieja del tracker instalada, no le vuelve a ensuciar el catálogo.
+  if (!app.includes("—")) {
+    await query("insert into app_catalog (app_label) values ($1) on conflict (app_label) do nothing", [app]);
+  }
 
   let category = providedCategory;
   if (!category) {

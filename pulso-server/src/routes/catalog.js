@@ -17,8 +17,11 @@ function mapRow(row) {
 
 // GET /api/catalog?filter=unclassified
 router.get("/", async (req, res) => {
-  const where = req.query.filter === "unclassified" ? "where category = 'sin_clasificar'" : "";
-  const { rows } = await query(`select * from app_catalog ${where} order by first_seen_at desc`);
+  const base = req.query.filter === "unclassified" ? "where category = 'sin_clasificar'" : "where true";
+  // Nunca muestra entradas del formato viejo (separador "—") — son de antes de que la app
+  // arme el nombre a partir del navegador/sitio/URL, y ya no se pueden crear entradas nuevas
+  // así (ver POST /activities), pero esto cubre lo que ya estaba en la base.
+  const { rows } = await query(`select * from app_catalog ${base} and app_label not like '%—%' order by first_seen_at desc`);
   res.json(rows.map(mapRow));
 });
 

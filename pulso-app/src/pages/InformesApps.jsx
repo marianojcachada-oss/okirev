@@ -31,7 +31,7 @@ function AppRow({ app }) {
 }
 
 export default function InformesApps() {
-  const [preset, setPreset] = useState("todo-el-anio");
+  const [preset, setPreset] = useState("hoy");
   const [isCustom, setIsCustom] = useState(false);
   const [customFrom, setCustomFrom] = useState(atlantaToday());
   const [customTo, setCustomTo] = useState(atlantaToday());
