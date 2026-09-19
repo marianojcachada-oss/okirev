@@ -286,7 +286,20 @@ router.patch("/:id", async (req, res) => {
   const values = [];
   let i = 1;
 
-  if ("status" in req.body) { fields.push(`status = $${i++}`); values.push(req.body.status); }
+  if ("status" in req.body) {
+    // El tracker manda su estado en cada sondeo, pero nunca es la fuente de verdad de si el
+    // empleado sigue realmente fichado — eso lo decide únicamente si hay un bloque de
+    // asistencia abierto. Sin este chequeo, un último ping tardío del tracker (justo antes de
+    // que note su propio check-out, o después de que un superadministrador lo desconecte a la
+    // fuerza) puede quedar pegado en "activo" para siempre, porque nada más lo corrige después.
+    let statusToApply = req.body.status;
+    if (statusToApply !== "ausente") {
+      const openResult = await query("select 1 from attendance where employee_id = $1 and check_out_at is null limit 1", [req.params.id]);
+      if (!openResult.rows[0]) statusToApply = "ausente";
+    }
+    fields.push(`status = $${i++}`);
+    values.push(statusToApply);
+  }
   if ("app" in req.body) { fields.push(`app = $${i++}`); values.push(req.body.app); }
   if ("productivity" in req.body) { fields.push(`productivity = $${i++}`); values.push(req.body.productivity); }
   if ("hoursToday" in req.body) { fields.push(`hours_today = $${i++}`); values.push(req.body.hoursToday); }
