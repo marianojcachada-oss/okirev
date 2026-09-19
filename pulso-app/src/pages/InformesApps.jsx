@@ -1,41 +1,13 @@
 import { useState } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
-import { Monitor } from "lucide-react";
 import { COLORS } from "../theme";
 import { useApi } from "../hooks/useApi";
 import { Card, SectionHeading, StateMessage } from "../components/ui";
 import { DATE_PRESETS, computeRange, atlantaToday } from "../utils/dateRanges";
 import { formatDuration } from "../utils/duration";
+import { parseAppLabel, AppIcon } from "../utils/appDisplay";
 
 const CATEGORY_COLORS = { Productiva: COLORS.live, Neutral: COLORS.brand, Improductiva: COLORS.critical };
-
-// Nuestro formato de navegador es "Navegador - Nombre del sitio - https://hostname". Para
-// mostrarlo como Insightful (ícono real + nombre corto), separamos esas tres partes.
-function parseAppLabel(label) {
-  const urlMatch = label.match(/https?:\/\/([^/\s]+)/);
-  if (!urlMatch) return { displayName: label, hostname: null };
-  const hostname = urlMatch[1];
-  const parts = label.split(" - ");
-  const displayName = parts.length >= 3 ? parts.slice(1, -1).join(" - ") : hostname;
-  return { displayName, hostname };
-}
-
-function AppIcon({ hostname }) {
-  if (hostname) {
-    return (
-      <img
-        src={`https://www.google.com/s2/favicons?domain=${hostname}&sz=32`}
-        alt=""
-        style={{ width: 22, height: 22, borderRadius: 5, flexShrink: 0 }}
-        onError={(e) => {
-          e.target.style.display = "none";
-          e.target.nextSibling.style.display = "flex";
-        }}
-      />
-    );
-  }
-  return null;
-}
 
 function AppRow({ app }) {
   const { displayName, hostname } = parseAppLabel(app.name);
@@ -46,18 +18,7 @@ function AppRow({ app }) {
         borderBottom: `1px solid ${COLORS.border}`,
       }}
     >
-      <div style={{ width: 22, height: 22, flexShrink: 0, position: "relative" }}>
-        <AppIcon hostname={hostname} />
-        <div
-          style={{
-            width: 22, height: 22, borderRadius: 5, background: COLORS.surfaceHover,
-            display: hostname ? "none" : "flex", alignItems: "center", justifyContent: "center",
-            position: "absolute", top: 0, left: 0,
-          }}
-        >
-          <Monitor size={12} color={COLORS.textTertiary} />
-        </div>
-      </div>
+      <AppIcon hostname={hostname} />
       <span style={{ fontSize: 13, flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{displayName}</span>
       <span style={{ fontSize: 11.5, color: CATEGORY_COLORS[app.category] || COLORS.textTertiary, flexShrink: 0, width: 90 }}>
         {app.category}

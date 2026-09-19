@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
-import { Monitor, Check, X as XIcon } from "lucide-react";
+import { Check, X as XIcon } from "lucide-react";
 import { COLORS } from "../theme";
 import { useApi } from "../hooks/useApi";
 import { api } from "../api/client";
 import { Card, Th, Td, StateMessage } from "../components/ui";
+import { parseAppLabel, AppIcon } from "../utils/appDisplay";
 
 const CATEGORIES = [
   { id: "Productiva", label: "Productiva", color: COLORS.live },
@@ -168,6 +169,7 @@ export default function Catalogo() {
             {sorted.map((c) => {
               const isPending = c.appLabel in pending;
               const effectiveCategory = isPending ? pending[c.appLabel] : c.category === "sin_clasificar" ? null : c.category;
+              const { displayName, hostname } = parseAppLabel(c.appLabel);
               return (
                 <tr key={c.appLabel} className="row-hover" style={isPending ? { background: "rgba(108,123,255,0.06)" } : undefined}>
                   <Td>
@@ -175,9 +177,14 @@ export default function Catalogo() {
                   </Td>
                   <Td>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <Monitor size={13} color={COLORS.textTertiary} />
-                      <span style={{ wordBreak: "break-word" }}>{c.appLabel}</span>
-                      {isPending && <span style={{ fontSize: 10.5, color: COLORS.brand }}>sin guardar</span>}
+                      <AppIcon hostname={hostname} size={18} />
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ wordBreak: "break-word" }}>{displayName}</div>
+                        {hostname && displayName !== c.appLabel && (
+                          <div style={{ fontSize: 10.5, color: COLORS.textTertiary, wordBreak: "break-word" }}>{c.appLabel}</div>
+                        )}
+                      </div>
+                      {isPending && <span style={{ fontSize: 10.5, color: COLORS.brand, flexShrink: 0 }}>sin guardar</span>}
                     </div>
                   </Td>
                   <Td mono>{new Date(c.firstSeenAt).toLocaleDateString("es-AR", { timeZone: "America/New_York" })}</Td>
