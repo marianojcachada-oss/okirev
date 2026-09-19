@@ -41,6 +41,8 @@ create table if not exists employees (
   tracking_config_id text references tracking_configs(id),
   idle_threshold_minutes_override integer, -- null = use tracking_config_id's value, or the company default
   is_super_admin boolean not null default false, -- separate from role_id/permissions — only this flag can trigger the destructive company-wide cleanup actions
+  expected_checkin_time time, -- hora local de Atlanta; null = sin monitoreo de ausencia para este empleado (opt-in por persona)
+  expected_checkin_days integer[] not null default '{1,2,3,4,5}', -- 0=domingo .. 6=sábado; default lunes a viernes
   break_minutes_override integer -- null = use tracking_config_id's value, or the company default
 );
 
@@ -135,6 +137,7 @@ create table if not exists settings (
   idle_threshold_minutes integer not null default 5,
   default_break_minutes integer not null default 15,
   prohibited_apps text[] not null default '{}',
+  prohibited_apps_alerts_enabled boolean not null default false, -- apagado por default; el admin lo prende a propósito
   desktop_token text,
   constraint settings_single_row check (id = 1)
 );

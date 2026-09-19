@@ -195,14 +195,21 @@ body.compact-mode .status-card { padding: 12px; }
 .break-btn.active { background: color-mix(in srgb, var(--color-warn) 16%, transparent); border-color: var(--color-warn); color: var(--color-warn); }
 .break-btn:disabled { opacity: 0.5; cursor: default; }
 .blocks-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.day-header {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 12.5px; color: var(--color-text-secondary); font-weight: 600;
+  margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--color-border);
+}
+.day-header:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+.day-header .day-total { font-family: "JetBrains Mono", monospace; color: var(--color-text-tertiary); font-weight: 400; }
 .block-row {
   display: flex; align-items: center; justify-content: space-between;
-  background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 10px;
-  padding: 10px 12px; font-size: 12.5px;
+  background: var(--color-surface-hover); border: 1px solid var(--color-border);
+  border-radius: 8px; padding: 9px 12px;
 }
 .block-col { display: flex; flex-direction: column; gap: 2px; }
 .block-label { font-size: 10.5px; color: var(--color-text-tertiary); }
-.block-value { font-family: "JetBrains Mono", monospace; font-size: 12.5px; }
+.block-value { font-family: "JetBrains Mono", monospace; font-size: 15px; font-weight: 600; }
 .block-duration { font-family: "JetBrains Mono", monospace; font-size: 12px; color: var(--color-text-secondary); }
 .block-duration.open { color: var(--color-warn); }
 .empty { color: var(--color-text-tertiary); font-size: 12.5px; text-align: center; padding: 24px 0; }
@@ -211,7 +218,9 @@ body.compact-mode .status-card { padding: 12px; }
   display: flex; align-items: center; justify-content: space-between;
   border-top: 1px solid var(--color-border); padding-top: 10px;
 }
+.footer-info { display: flex; flex-direction: column; gap: 1px; }
 .sync-label { font-size: 11px; color: var(--color-text-tertiary); }
+.version-label { font-size: 10px; color: var(--color-text-tertiary); opacity: 0.7; }
 .link-btn {
   background: none; border: 1px solid var(--color-border); border-radius: 8px;
   padding: 6px 10px; font-size: 12px; color: var(--color-brand); cursor: pointer;

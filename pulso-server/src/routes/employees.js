@@ -26,6 +26,8 @@ function mapRow(row) {
     trackingConfigName: row.tracking_config_name || null,
     idleThresholdMinutesOverride: row.idle_threshold_minutes_override,
     breakMinutesOverride: row.break_minutes_override,
+    expectedCheckinTime: row.expected_checkin_time,
+    expectedCheckinDays: row.expected_checkin_days,
   };
 }
 
@@ -345,7 +347,10 @@ router.patch("/:id", async (req, res) => {
 // PUT /api/employees/:id  { name, teamId, role, username, email, roleId }
 // Admin edits to an employee's profile (not the live tracking fields — see PATCH above).
 router.put("/:id", requireSession, requirePermission("empleados"), async (req, res) => {
-  const { name, teamId, role, username, email, roleId, trackingConfigId, idleThresholdMinutesOverride, breakMinutesOverride } = req.body;
+  const {
+    name, teamId, role, username, email, roleId, trackingConfigId,
+    idleThresholdMinutesOverride, breakMinutesOverride, expectedCheckinTime, expectedCheckinDays,
+  } = req.body;
   const fields = [];
   const values = [];
   let i = 1;
@@ -364,6 +369,14 @@ router.put("/:id", requireSession, requirePermission("empleados"), async (req, r
   if (breakMinutesOverride !== undefined) {
     fields.push(`break_minutes_override = $${i++}`);
     values.push(breakMinutesOverride === "" || breakMinutesOverride === null ? null : Number(breakMinutesOverride));
+  }
+  if (expectedCheckinTime !== undefined) {
+    fields.push(`expected_checkin_time = $${i++}`);
+    values.push(expectedCheckinTime === "" || expectedCheckinTime === null ? null : expectedCheckinTime);
+  }
+  if (expectedCheckinDays !== undefined) {
+    fields.push(`expected_checkin_days = $${i++}`);
+    values.push(Array.isArray(expectedCheckinDays) && expectedCheckinDays.length > 0 ? expectedCheckinDays : [1, 2, 3, 4, 5]);
   }
 
   if (fields.length === 0) return res.status(400).json({ error: "Nada para actualizar" });

@@ -483,6 +483,11 @@ export default function Ajustes() {
     refetch();
   }
 
+  async function toggleProhibitedAlerts() {
+    await api.put("/settings", { prohibitedAppsAlertsEnabled: !settings.prohibitedAppsAlertsEnabled });
+    refetch();
+  }
+
   async function saveCompanyInfo() {
     setSavingCompany(true);
     try {
@@ -583,7 +588,39 @@ export default function Ajustes() {
       </Card>
 
       <Card>
-        <SectionHeading>Aplicaciones prohibidas</SectionHeading>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+          <SectionHeading>Aplicaciones prohibidas</SectionHeading>
+        </div>
+        <div
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+            padding: "10px 12px", background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 8, marginBottom: 14,
+          }}
+        >
+          <div>
+            <div style={{ fontSize: 13, color: COLORS.textPrimary }}>Generar alertas cuando alguien las use</div>
+            <div style={{ fontSize: 11.5, color: COLORS.textTertiary, marginTop: 2 }}>
+              Apagado por default. Una alerta por persona y app por día, no una por cada minuto que la tenga abierta.
+            </div>
+          </div>
+          <button
+            onClick={toggleProhibitedAlerts}
+            role="switch"
+            aria-checked={settings.prohibitedAppsAlertsEnabled}
+            style={{
+              flexShrink: 0, width: 40, height: 22, borderRadius: 20, border: "none", cursor: "pointer", position: "relative",
+              background: settings.prohibitedAppsAlertsEnabled ? COLORS.brand : COLORS.surfaceHover,
+              transition: "background 0.15s",
+            }}
+          >
+            <span
+              style={{
+                position: "absolute", top: 2, left: settings.prohibitedAppsAlertsEnabled ? 20 : 2,
+                width: 18, height: 18, borderRadius: "50%", background: "#fff", transition: "left 0.15s",
+              }}
+            />
+          </button>
+        </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
           {settings.prohibitedApps.map((app) => (
             <span

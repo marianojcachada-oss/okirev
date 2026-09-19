@@ -147,6 +147,8 @@ ipcMain.handle("window:set-theme", (_event, themeId) => {
   return true;
 });
 
+ipcMain.handle("app:get-version", () => app.getVersion());
+
 /* ---------------- Activity tracking ---------------- */
 
 function formatDuration(ms) {

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { query, newId, formatDurationSeconds, parseDurationToSeconds, EFFECTIVE_CATEGORY_SQL, WITHIN_ATTENDANCE_SQL } from "../db.js";
+import { query, newId, formatDurationSeconds, parseDurationToSeconds, EFFECTIVE_CATEGORY_SQL, WITHIN_ATTENDANCE_SQL, nowHM } from "../db.js";
 import { requireSession, requirePermission } from "../middleware/requireSession.js";
 
 const router = Router();
@@ -201,7 +201,36 @@ router.post("/", requireSession, async (req, res) => {
 
   await query("update employees set app = $1 where id = $2", [app, employeeId]);
 
+  await maybeCreateProhibitedAppAlert(employeeId, employee.name, app);
+
   res.status(201).json(mapSingleRow(rows[0]));
 });
+
+// Genera una alerta de "app/sitio prohibido" si el toggle de Ajustes está prendido y la app
+// coincide (sin importar mayúsculas) con algo de la lista de prohibidas — pero solo una vez
+// por empleado+app+día, para no inundar de alertas mientras la sigue teniendo abierta.
+async function maybeCreateProhibitedAppAlert(employeeId, employeeName, app) {
+  const settingsResult = await query("select prohibited_apps, prohibited_apps_alerts_enabled from settings where id = 1");
+  const settings = settingsResult.rows[0];
+  if (!settings?.prohibited_apps_alerts_enabled) return;
+
+  const appLower = app.toLowerCase();
+  const matched = (settings.prohibited_apps || []).find((p) => appLower.includes(p.toLowerCase()));
+  if (!matched) return;
+
+  const existing = await query(
+    `select 1 from alerts
+     where employee_id = $1 and type = 'app_prohibida' and detail = $2
+       and (created_at at time zone 'America/New_York')::date = (now() at time zone 'America/New_York')::date`,
+    [employeeId, matched]
+  );
+  if (existing.rows[0]) return;
+
+  await query(
+    `insert into alerts (id, severity, type, employee_id, employee_name, detail, time, status)
+     values ($1, 'advertencia', 'app_prohibida', $2, $3, $4, $5, 'abierta')`,
+    [newId("al"), employeeId, employeeName, matched, nowHM()]
+  );
+}
 
 export default router;

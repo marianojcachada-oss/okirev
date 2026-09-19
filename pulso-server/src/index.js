@@ -16,6 +16,7 @@ import trackingConfigsRouter from "./routes/trackingConfigs.js";
 import breaksRouter from "./routes/breaks.js";
 import catalogRouter from "./routes/catalog.js";
 import { pool } from "./db.js";
+import { startAbsenceChecker } from "./absenceCheck.js";
 
 const app = express();
 
@@ -59,4 +60,5 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`OKlrev API escuchando en http://localhost:${PORT}`);
+  startAbsenceChecker();
 });

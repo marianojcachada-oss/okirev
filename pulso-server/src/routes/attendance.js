@@ -70,6 +70,17 @@ router.get("/today/:employeeId", async (req, res) => {
   res.json(rows.map(mapRow));
 });
 
+// GET /api/attendance/week/:employeeId -- últimos 7 días (hoy + 6 anteriores) para el
+// historial del tracker, con el mismo resguardo para turnos todavía abiertos.
+router.get("/week/:employeeId", async (req, res) => {
+  const today = todayDateStr();
+  const { rows } = await query(
+    "select * from attendance where employee_id = $1 and (date >= $2::date - interval '6 days' or check_out_at is null) order by check_in_at desc",
+    [req.params.employeeId, today]
+  );
+  res.json(rows.map(mapRow));
+});
+
 // POST /api/attendance/checkin  { employeeId }  -- código 1015. Siempre crea un bloque nuevo.
 router.post("/checkin", requireSession, async (req, res) => {
   const employeeId = resolveActingEmployeeId(req, req.body.employeeId);

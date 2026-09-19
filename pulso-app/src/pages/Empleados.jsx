@@ -23,7 +23,14 @@ function PercentMetric({ value, color }) {
   );
 }
 
-const emptyForm = { name: "", teamId: "", role: "", username: "", email: "", roleId: "", trackingConfigId: "", idleThresholdMinutesOverride: "", breakMinutesOverride: "" };
+const emptyForm = {
+  name: "", teamId: "", role: "", username: "", email: "", roleId: "", trackingConfigId: "",
+  idleThresholdMinutesOverride: "", breakMinutesOverride: "", expectedCheckinTime: "", expectedCheckinDays: [1, 2, 3, 4, 5],
+};
+const DAY_LABELS = [
+  { value: 1, label: "Lun" }, { value: 2, label: "Mar" }, { value: 3, label: "Mié" }, { value: 4, label: "Jue" },
+  { value: 5, label: "Vie" }, { value: 6, label: "Sáb" }, { value: 0, label: "Dom" },
+];
 
 function EmployeeFormModal({ initial, teams, roles, trackingConfigs, onClose, onSaved }) {
   const isEdit = !!initial;
@@ -34,6 +41,8 @@ function EmployeeFormModal({ initial, teams, roles, trackingConfigs, onClose, on
           email: initial.email || "", roleId: initial.roleId || "", trackingConfigId: initial.trackingConfigId || "",
           idleThresholdMinutesOverride: initial.idleThresholdMinutesOverride ?? "",
           breakMinutesOverride: initial.breakMinutesOverride ?? "",
+          expectedCheckinTime: initial.expectedCheckinTime ? initial.expectedCheckinTime.slice(0, 5) : "",
+          expectedCheckinDays: initial.expectedCheckinDays && initial.expectedCheckinDays.length ? initial.expectedCheckinDays : [1, 2, 3, 4, 5],
         }
       : emptyForm
   );
@@ -42,6 +51,15 @@ function EmployeeFormModal({ initial, teams, roles, trackingConfigs, onClose, on
 
   function set(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
+  }
+
+  function toggleDay(day) {
+    setForm((f) => ({
+      ...f,
+      expectedCheckinDays: f.expectedCheckinDays.includes(day)
+        ? f.expectedCheckinDays.filter((d) => d !== day)
+        : [...f.expectedCheckinDays, day],
+    }));
   }
 
   async function handleSubmit() {
@@ -133,6 +151,36 @@ function EmployeeFormModal({ initial, teams, roles, trackingConfigs, onClose, on
             onChange={(e) => set("breakMinutesOverride", e.target.value)}
             placeholder="Dejalo vacío para no anular nada"
           />
+        </div>
+        <div>
+          <label style={labelStyle}>Hora de check-in esperada (opcional — activa la alerta de ausencia para esta persona)</label>
+          <input
+            type="time" style={inputStyle} value={form.expectedCheckinTime}
+            onChange={(e) => set("expectedCheckinTime", e.target.value)}
+          />
+          {form.expectedCheckinTime && (
+            <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+              {DAY_LABELS.map((d) => (
+                <button
+                  key={d.value}
+                  type="button"
+                  onClick={() => toggleDay(d.value)}
+                  className="chip-btn"
+                  style={{
+                    padding: "5px 10px", borderRadius: 6, fontSize: 12, cursor: "pointer",
+                    border: `1px solid ${form.expectedCheckinDays.includes(d.value) ? COLORS.brand : COLORS.border}`,
+                    background: form.expectedCheckinDays.includes(d.value) ? "rgba(108,123,255,0.14)" : "transparent",
+                    color: form.expectedCheckinDays.includes(d.value) ? COLORS.textPrimary : COLORS.textTertiary,
+                  }}
+                >
+                  {d.label}
+                </button>
+              ))}
+            </div>
+          )}
+          <p style={{ fontSize: 11.5, color: COLORS.textTertiary, margin: "6px 0 0" }}>
+            Si no marcó ningún check-in 15 minutos después de esta hora, en los días tildados, se genera una alerta de ausencia. Dejalo vacío si no querés monitorear esto para esta persona.
+          </p>
         </div>
         {!isEdit && (
           <p style={{ fontSize: 11.5, color: COLORS.textTertiary, margin: 0 }}>

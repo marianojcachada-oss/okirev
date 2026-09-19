@@ -302,29 +302,70 @@ function showConfirm(message) {
 
 /* ---------------- Main view ---------------- */
 
+function atlantaDateStr(date) {
+  return date.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+}
+
+function formatDayLabel(dateStr) {
+  const todayStr = atlantaDateStr(new Date());
+  const yesterdayStr = atlantaDateStr(new Date(Date.now() - 24 * 60 * 60 * 1000));
+  if (dateStr === todayStr) return "Hoy";
+  if (dateStr === yesterdayStr) return "Ayer";
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const date = new Date(y, m - 1, d); // componentes locales, evita el corrimiento de un dia al parsear como UTC
+  const label = date.toLocaleDateString("es-AR", { weekday: "short", day: "numeric", month: "short" });
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function fmtHoursMinutes(ms) {
+  const totalMin = Math.max(0, Math.round(ms / 60000));
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return `${h}h ${String(m).padStart(2, "0")}m`;
+}
+
 function renderBlocks(blocks) {
   const list = $("blocks-list");
   if (!blocks.length) {
-    list.innerHTML = '<div class="empty">Todavía no marcaste ningún check-in hoy.</div>';
+    list.innerHTML = '<div class="empty">Todavía no marcaste ningún check-in esta semana.</div>';
     return;
   }
-  list.innerHTML = blocks
-    .slice()
-    .reverse()
-    .map((b) => {
-      const isOpen = b.checkOut === null;
+
+  const byDay = new Map();
+  for (const b of blocks) {
+    if (!byDay.has(b.date)) byDay.set(b.date, []);
+    byDay.get(b.date).push(b);
+  }
+  const days = Array.from(byDay.keys()).sort((a, b) => b.localeCompare(a)); // mas reciente primero
+
+  list.innerHTML = days
+    .map((day) => {
+      const dayBlocks = byDay.get(day).slice().sort((a, b) => (b.checkInAt || "").localeCompare(a.checkInAt || ""));
+      const totalMs = dayBlocks.reduce((sum, b) => {
+        const end = b.checkOutAt ? new Date(b.checkOutAt) : new Date();
+        return sum + (end - new Date(b.checkInAt));
+      }, 0);
+      const rows = dayBlocks
+        .map((b) => {
+          const isOpen = b.checkOut === null;
+          return `
+            <div class="block-row">
+              <div class="block-col">
+                <span class="block-label">Check-in (1015)</span>
+                <span class="block-value">${b.checkIn}</span>
+              </div>
+              <div class="block-col">
+                <span class="block-label">Check-out (1025)</span>
+                <span class="block-value">${b.checkOut ?? "—"}</span>
+              </div>
+              <div class="block-duration ${isOpen ? "open" : ""}">${isOpen ? "en curso" : b.hours}</div>
+            </div>
+          `;
+        })
+        .join("");
       return `
-        <div class="block-row">
-          <div class="block-col">
-            <span class="block-label">Check-in (1015)</span>
-            <span class="block-value">${b.checkIn}</span>
-          </div>
-          <div class="block-col">
-            <span class="block-label">Check-out (1025)</span>
-            <span class="block-value">${b.checkOut ?? "—"}</span>
-          </div>
-          <div class="block-duration ${isOpen ? "open" : ""}">${isOpen ? "en curso" : b.hours}</div>
-        </div>
+        <div class="day-header"><span>${formatDayLabel(day)}</span><span class="day-total">${fmtHoursMinutes(totalMs)}</span></div>
+        ${rows}
       `;
     })
     .join("");
@@ -357,7 +398,7 @@ function updateStatusFromBlocks(blocks) {
 
 async function refreshToday(silent) {
   try {
-    const blocks = await apiGet(state.config.apiUrl, `/attendance/today/${state.config.employeeId}`);
+    const blocks = await apiGet(state.config.apiUrl, `/attendance/week/${state.config.employeeId}`);
     state.today = blocks;
     renderBlocks(blocks);
     await fetchSettings();
@@ -459,6 +500,10 @@ async function init() {
   } else {
     showMainView();
   }
+  window.pulso.getVersion().then((v) => {
+    const el = $("version-label");
+    if (el) el.textContent = `OKlrev Tracker v${v}`;
+  });
 }
 
 document.addEventListener("DOMContentLoaded", init);

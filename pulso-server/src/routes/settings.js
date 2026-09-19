@@ -11,6 +11,7 @@ function mapRow(row) {
     idleThresholdMinutes: row.idle_threshold_minutes,
     defaultBreakMinutes: row.default_break_minutes,
     prohibitedApps: row.prohibited_apps || [],
+    prohibitedAppsAlertsEnabled: row.prohibited_apps_alerts_enabled,
   };
 }
 
@@ -22,7 +23,7 @@ router.get("/", async (req, res) => {
 
 // PUT /api/settings  { companyName, timezone, idleThresholdMinutes }
 router.put("/", requireSession, requirePermission("ajustes"), async (req, res) => {
-  const { companyName, timezone, idleThresholdMinutes, defaultBreakMinutes } = req.body;
+  const { companyName, timezone, idleThresholdMinutes, defaultBreakMinutes, prohibitedAppsAlertsEnabled } = req.body;
   const fields = [];
   const values = [];
   let i = 1;
@@ -36,6 +37,10 @@ router.put("/", requireSession, requirePermission("ajustes"), async (req, res) =
   if (defaultBreakMinutes !== undefined) {
     const b = Number(defaultBreakMinutes);
     if (Number.isFinite(b) && b > 0) { fields.push(`default_break_minutes = $${i++}`); values.push(b); }
+  }
+  if (prohibitedAppsAlertsEnabled !== undefined) {
+    fields.push(`prohibited_apps_alerts_enabled = $${i++}`);
+    values.push(!!prohibitedAppsAlertsEnabled);
   }
 
   if (fields.length > 0) {
