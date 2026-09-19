@@ -25,6 +25,7 @@ async function buildAuthResponse(employee) {
     team: employee.team_name,
     username: employee.username,
     role: role ? { id: role.id, name: role.name, permissions: role.permissions || [] } : null,
+    isSuperAdmin: employee.is_super_admin,
     token,
   };
 }
@@ -86,6 +87,7 @@ router.get("/me", requireSession, async (req, res) => {
     team: employee.team_name,
     username: employee.username,
     role: req.session.role,
+    isSuperAdmin: req.session.isSuperAdmin,
     token,
   });
 });

@@ -40,6 +40,7 @@ create table if not exists employees (
   role_id text references roles(id),
   tracking_config_id text references tracking_configs(id),
   idle_threshold_minutes_override integer, -- null = use tracking_config_id's value, or the company default
+  is_super_admin boolean not null default false, -- separate from role_id/permissions — only this flag can trigger the destructive company-wide cleanup actions
   break_minutes_override integer -- null = use tracking_config_id's value, or the company default
 );
 

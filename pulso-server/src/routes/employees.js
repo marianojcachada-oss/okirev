@@ -1,7 +1,7 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { query, newId, todayDateStr, nowHM, EFFECTIVE_CATEGORY_SQL, WITHIN_ATTENDANCE_SQL } from "../db.js";
-import { requireSession, requirePermission } from "../middleware/requireSession.js";
+import { requireSession, requirePermission, requireSuperAdmin } from "../middleware/requireSession.js";
 
 const router = Router();
 
@@ -161,7 +161,35 @@ router.get("/devices", requireSession, requirePermission("empleados"), async (re
   );
 });
 
-// GET /api/employees/summary?date=YYYY-MM-DD | ?from=&to=  (default: today in Atlanta time)
+// POST /api/employees/disconnect-all -- fuerza el check-out de TODOS los bloques de asistencia
+// que sigan abiertos ahora mismo (y cualquier break abierto atado a ellos), y deja a esos
+// empleados en estado "ausente". Pensado para limpiar el estado después de un bug del tracker
+// que haya dejado gente marcada como activa sin estarlo. Exclusivo del superadministrador.
+router.post("/disconnect-all", requireSession, requireSuperAdmin, async (req, res) => {
+  const open = await query("select distinct employee_id from attendance where check_out_at is null");
+  const employeeIds = open.rows.map((r) => r.employee_id);
+
+  await query("update attendance set check_out_at = now(), check_out = $1 where check_out_at is null", [nowHM()]);
+  await query("update breaks set ended_at = now() where ended_at is null");
+  if (employeeIds.length > 0) {
+    await query("update employees set status = 'ausente', app = null where id = any($1::text[])", [employeeIds]);
+  }
+  res.json({ disconnected: employeeIds.length });
+});
+
+// POST /api/employees/reset-today -- borra los bloques de asistencia y la actividad de HOY
+// (cualquier break atado se borra en cascada) para todos los empleados, y deja a todos en
+// "ausente" con 0:00 en todo. No toca ningún día anterior. Exclusivo del superadministrador.
+router.post("/reset-today", requireSession, requireSuperAdmin, async (req, res) => {
+  const today = todayDateStr();
+  const attendanceResult = await query("delete from attendance where date = $1 returning id", [today]);
+  const activitiesResult = await query(
+    `delete from activities where (occurred_at at time zone 'America/New_York')::date = $1 returning id`,
+    [today]
+  );
+  await query("update employees set status = 'ausente', app = null, hours_today = 0");
+  res.json({ attendanceDeleted: attendanceResult.rows.length, activitiesDeleted: activitiesResult.rows.length });
+});
 // Per-employee breakdown: worked hours (from attendance), and productive/neutral/
 // unproductive/inactive hours (from activities). Used by Empleados and Asistencia.
 router.get("/summary", requireSession, requirePermission("empleados", "asistencia", "actividades"), async (req, res) => {

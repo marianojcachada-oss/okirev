@@ -10,7 +10,7 @@ export async function requireSession(req, res, next) {
   if (!token) return res.status(401).json({ error: "No autenticado" });
 
   const { rows } = await query(
-    `select s.employee_id, e.name, e.username, e.role_id, r.name as role_name, r.permissions
+    `select s.employee_id, e.name, e.username, e.role_id, e.is_super_admin, r.name as role_name, r.permissions
      from sessions s
      join employees e on e.id = s.employee_id
      left join roles r on r.id = e.role_id
@@ -24,8 +24,19 @@ export async function requireSession(req, res, next) {
     employeeId: session.employee_id,
     name: session.name,
     username: session.username,
+    isSuperAdmin: session.is_super_admin,
     role: session.role_id ? { id: session.role_id, name: session.role_name, permissions: session.permissions || [] } : null,
   };
+  next();
+}
+
+// Requires the "superadministrador" flag specifically — separate from role permissions
+// entirely, for the handful of destructive company-wide actions (disconnect everyone, reset
+// today's counters) that should never be reachable by a regular Administrador role.
+export function requireSuperAdmin(req, res, next) {
+  if (!req.session?.isSuperAdmin) {
+    return res.status(403).json({ error: "Esta acción es exclusiva del superadministrador" });
+  }
   next();
 }
 

@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Ban, X, Plus, Pencil, Trash2, Shield, Palette } from "lucide-react";
+import { Ban, X, Plus, Pencil, Trash2, Shield, Palette, AlertTriangle, PowerOff, RotateCcw } from "lucide-react";
 import { COLORS, NAV_ITEMS, THEMES } from "../theme";
 import { useApi } from "../hooks/useApi";
 import { api } from "../api/client";
 import { useTheme } from "../context/ThemeContext";
+import { useAuth } from "../auth/AuthContext";
 import { Card, SectionHeading, StateMessage, Modal } from "../components/ui";
 
 const PERMISSION_PAGES = NAV_ITEMS.flatMap((item) =>
@@ -375,7 +376,93 @@ function ThemeSection() {
   );
 }
 
+function SuperAdminSection() {
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [lastResult, setLastResult] = useState(null);
+
+  async function handleDisconnectAll() {
+    if (
+      !confirm(
+        '¿Desconectar a TODOS los empleados que figuren activos ahora mismo? Se les cierra el check-in abierto (y cualquier break abierto) y quedan en "Ausente". No se puede deshacer.'
+      )
+    )
+      return;
+    setDisconnecting(true);
+    setLastResult(null);
+    try {
+      const result = await api.post("/employees/disconnect-all", {});
+      setLastResult(`Se desconectó a ${result.disconnected} empleado(s).`);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setDisconnecting(false);
+    }
+  }
+
+  async function handleResetToday() {
+    if (
+      !confirm(
+        "¿Reiniciar TODOS los contadores de HOY a 0:00? Esto borra los bloques de asistencia y toda la actividad registrada hoy para TODA la empresa. No afecta días anteriores."
+      )
+    )
+      return;
+    if (!confirm("Confirmá una vez más: se va a borrar la asistencia y actividad de HOY de todos los empleados. Esta acción NO se puede deshacer. ¿Continuar?"))
+      return;
+    setResetting(true);
+    setLastResult(null);
+    try {
+      const result = await api.post("/employees/reset-today", {});
+      setLastResult(`Se borraron ${result.attendanceDeleted} bloque(s) de asistencia y ${result.activitiesDeleted} registro(s) de actividad de hoy.`);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setResetting(false);
+    }
+  }
+
+  return (
+    <Card style={{ border: `1px solid ${COLORS.critical}` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+        <AlertTriangle size={16} color={COLORS.critical} />
+        <SectionHeading>Zona de superadministrador</SectionHeading>
+      </div>
+      <p style={{ fontSize: 12.5, color: COLORS.textTertiary, margin: "0 0 14px" }}>
+        Estas dos acciones son irreversibles y afectan a toda la empresa de una sola vez. Solo tu cuenta puede verlas y usarlas.
+      </p>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <button
+          onClick={handleDisconnectAll}
+          disabled={disconnecting}
+          className="chip-btn"
+          style={{
+            display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", borderRadius: 8,
+            border: `1px solid ${COLORS.border}`, background: COLORS.surfaceHover, color: COLORS.textPrimary,
+            fontSize: 13, cursor: disconnecting ? "default" : "pointer", opacity: disconnecting ? 0.7 : 1,
+          }}
+        >
+          <PowerOff size={14} /> {disconnecting ? "Desconectando…" : "Desconectar a todos los activos"}
+        </button>
+        <button
+          onClick={handleResetToday}
+          disabled={resetting}
+          className="chip-btn"
+          style={{
+            display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", borderRadius: 8,
+            border: `1px solid ${COLORS.critical}`, background: "rgba(240,85,90,0.1)", color: COLORS.critical,
+            fontSize: 13, cursor: resetting ? "default" : "pointer", opacity: resetting ? 0.7 : 1,
+          }}
+        >
+          <RotateCcw size={14} /> {resetting ? "Reiniciando…" : "Reiniciar contadores de hoy a 0:00"}
+        </button>
+      </div>
+      {lastResult && <p style={{ fontSize: 12.5, color: COLORS.live, marginTop: 12 }}>{lastResult}</p>}
+    </Card>
+  );
+}
+
 export default function Ajustes() {
+  const { user } = useAuth();
   const { data: settings, loading, error, refetch } = useApi("/settings");
   const [newApp, setNewApp] = useState("");
   const [companyName, setCompanyName] = useState(null);
@@ -415,6 +502,7 @@ export default function Ajustes() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18, maxWidth: 640 }}>
+      {user?.isSuperAdmin && <SuperAdminSection />}
       <ThemeSection />
       <Card>
         <SectionHeading>Datos de la empresa</SectionHeading>
