@@ -42,42 +42,43 @@ function friendlySiteName(hostname) {
 // lo comparamos contra una lista de sitios conocidos y solo usamos el nombre limpio si
 // reconocemos alguno — si no reconoce nada, cae al nombre del navegador solo, como siempre.
 const TITLE_SITE_PATTERNS = [
-  { match: /microsoft teams/i, name: "Microsoft Teams" },
-  { match: /taxicaller|central de despacho/i, name: "Taxi caller" },
-  { match: /youtube/i, name: "Youtube" },
-  { match: /power automate/i, name: "Microsoft Power Automate" },
-  { match: /outlook/i, name: "Outlook" },
-  { match: /gmail/i, name: "Gmail" },
-  { match: /google drive/i, name: "Google Drive" },
-  { match: /google docs/i, name: "Google Docs" },
-  { match: /whatsapp/i, name: "WhatsApp" },
-  { match: /instagram/i, name: "Instagram" },
-  { match: /facebook/i, name: "Facebook" },
-  { match: /ringcentral/i, name: "RingCentral" },
-  { match: /github/i, name: "GitHub" },
-  { match: /salesforce/i, name: "Salesforce" },
-  { match: /zendesk/i, name: "Zendesk" },
-  { match: /sharepoint/i, name: "SharePoint" },
-  { match: /supabase/i, name: "Supabase" },
-  { match: /notion/i, name: "Notion" },
-  { match: /slack/i, name: "Slack" },
-  { match: /canva/i, name: "Canva" },
-  { match: /zoom/i, name: "Zoom" },
-  { match: /claude/i, name: "Claude" },
+  { match: /microsoft teams/i, name: "Microsoft Teams", hostname: "teams.microsoft.com" },
+  { match: /taxicaller|central de despacho/i, name: "Taxi caller", hostname: "app.taxicaller.net" },
+  { match: /youtube/i, name: "Youtube", hostname: "www.youtube.com" },
+  { match: /power automate/i, name: "Microsoft Power Automate", hostname: "make.powerautomate.com" },
+  { match: /outlook/i, name: "Outlook", hostname: "outlook.office.com" },
+  { match: /gmail/i, name: "Gmail", hostname: "mail.google.com" },
+  { match: /google drive/i, name: "Google Drive", hostname: "drive.google.com" },
+  { match: /google docs/i, name: "Google Docs", hostname: "docs.google.com" },
+  { match: /whatsapp/i, name: "WhatsApp", hostname: "web.whatsapp.com" },
+  { match: /instagram/i, name: "Instagram", hostname: "www.instagram.com" },
+  { match: /facebook/i, name: "Facebook", hostname: "www.facebook.com" },
+  { match: /ringcentral/i, name: "RingCentral", hostname: "app.ringcentral.com" },
+  { match: /github/i, name: "GitHub", hostname: "github.com" },
+  { match: /salesforce/i, name: "Salesforce", hostname: "salesforce.com" },
+  { match: /zendesk/i, name: "Zendesk", hostname: "zendesk.com" },
+  { match: /sharepoint/i, name: "SharePoint", hostname: "sharepoint.com" },
+  { match: /supabase/i, name: "Supabase", hostname: "supabase.com" },
+  { match: /notion/i, name: "Notion", hostname: "notion.so" },
+  { match: /slack/i, name: "Slack", hostname: "slack.com" },
+  { match: /canva/i, name: "Canva", hostname: "canva.com" },
+  { match: /zoom/i, name: "Zoom", hostname: "zoom.us" },
+  { match: /claude/i, name: "Claude", hostname: "claude.ai" },
 ];
 
 function matchKnownSite(title) {
   if (!title) return null;
   for (const p of TITLE_SITE_PATTERNS) {
-    if (p.match.test(title)) return p.name;
+    if (p.match.test(title)) return p;
   }
   return null;
 }
 
-// "Browser - Nombre del sitio" — sin URL, porque esto viene del título reconocido, no de una
-// URL real. Se muestra igual de limpio, solo que sin el link.
-function browserTitleLabel(browserName, siteName) {
-  return `${browserName} - ${siteName}`;
+// "Browser - Nombre del sitio - https://hostname-conocido" — usa el dominio conocido del sitio
+// (no necesariamente la página exacta en la que estaba), así el panel puede mostrar el favicon
+// real con el mismo mecanismo que ya usa para los sitios detectados por URL.
+function browserTitleLabel(browserName, siteName, hostname) {
+  return `${browserName} - ${siteName} - https://${hostname}`;
 }
 
 // "Browser - Nombre del sitio - https://hostname" — la URL real completa, para cuando SÍ hay
@@ -196,7 +197,7 @@ async function tick() {
           label = browserActivityLabel(win.app, tab.hostname);
         } else {
           const knownSite = matchKnownSite(win.title);
-          label = knownSite ? browserTitleLabel(win.app, knownSite) : win.app;
+          label = knownSite ? browserTitleLabel(win.app, knownSite.name, knownSite.hostname) : win.app;
         }
       } else {
         label = win.app;

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage, dialog } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage } = require("electron");
 const path = require("path");
 const os = require("os");
 const fs = require("fs");
@@ -67,24 +67,21 @@ function setupAutoUpdate() {
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
-  autoUpdater.on("update-downloaded", async (info) => {
-    const { response } = await dialog.showMessageBox(mainWindow, {
-      type: "info",
-      title: "Actualización lista",
-      message: `Hay una versión nueva de OKlrev Tracker (${info.version}) lista para instalar.`,
-      detail: "Se va a instalar sola la próxima vez que cierres la app. También podés reiniciar ahora mismo.",
-      buttons: ["Reiniciar ahora", "Más tarde"],
-      defaultId: 0,
-      cancelId: 1,
-    });
-    if (response === 0) {
-      isQuitting = true;
-      autoUpdater.quitAndInstall();
-    }
+  autoUpdater.on("update-available", (info) => {
+    if (mainWindow) mainWindow.webContents.send("update:status", { state: "downloading", version: info.version });
+  });
+
+  autoUpdater.on("update-downloaded", (info) => {
+    if (mainWindow) mainWindow.webContents.send("update:status", { state: "ready", version: info.version });
   });
 
   autoUpdater.on("error", (err) => {
     console.error("Error buscando actualizaciones:", err.message);
+  });
+
+  ipcMain.handle("update:install", () => {
+    isQuitting = true;
+    autoUpdater.quitAndInstall();
   });
 
   autoUpdater.checkForUpdates().catch((err) => console.error("No se pudo chequear actualizaciones:", err.message));

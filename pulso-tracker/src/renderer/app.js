@@ -493,6 +493,29 @@ function showMainView() {
   initMainView();
 }
 
+function setupUpdateBanner() {
+  const banner = $("update-banner");
+  const text = $("update-banner-text");
+  const btn = $("update-banner-btn");
+
+  btn.addEventListener("click", () => {
+    window.pulso.installUpdate();
+  });
+
+  window.pulso.onUpdateStatus(({ state: updateState, version }) => {
+    banner.classList.remove("hidden");
+    if (updateState === "downloading") {
+      banner.classList.remove("ready");
+      text.textContent = `Descargando la versión ${version}…`;
+      btn.classList.add("hidden");
+    } else if (updateState === "ready") {
+      banner.classList.add("ready");
+      text.textContent = `Versión ${version} lista`;
+      btn.classList.remove("hidden");
+    }
+  });
+}
+
 async function init() {
   state.config = await window.pulso.getConfig();
   if (!state.config?.apiUrl || !state.config?.employeeId) {
@@ -504,6 +527,7 @@ async function init() {
     const el = $("version-label");
     if (el) el.textContent = `OKlrev Tracker v${v}`;
   });
+  setupUpdateBanner();
 }
 
 document.addEventListener("DOMContentLoaded", init);

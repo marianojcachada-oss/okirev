@@ -12,7 +12,11 @@ contextBridge.exposeInMainWorld("pulso", {
   setCompactMode: (compact) => ipcRenderer.invoke("window:set-compact-mode", compact),
   setWindowTheme: (themeId) => ipcRenderer.invoke("window:set-theme", themeId),
   getVersion: () => ipcRenderer.invoke("app:get-version"),
+  installUpdate: () => ipcRenderer.invoke("update:install"),
   onTrackingUpdate: (callback) => {
     ipcRenderer.on("tracking:update", (_event, data) => callback(data));
+  },
+  onUpdateStatus: (callback) => {
+    ipcRenderer.on("update:status", (_event, data) => callback(data));
   },
 });
