@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld("pulso", {
   getVersion: () => ipcRenderer.invoke("app:get-version"),
   installUpdate: () => ipcRenderer.invoke("update:install"),
   checkForUpdatesNow: () => ipcRenderer.invoke("update:check-now"),
+  logIssue: (context, detail) => ipcRenderer.invoke("log:issue", context, detail),
   onTrackingUpdate: (callback) => {
     ipcRenderer.on("tracking:update", (_event, data) => callback(data));
   },

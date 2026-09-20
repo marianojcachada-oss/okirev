@@ -202,6 +202,10 @@ function logSyncIssue(context, detail) {
   } catch {}
 }
 
+ipcMain.handle("log:issue", (_event, context, detail) => {
+  logSyncIssue(context, detail);
+});
+
 ipcMain.handle("tracking:start", (_event, payload) => {
   const { apiUrl, employeeId, sessionToken, idleThresholdMinutes } = payload;
 

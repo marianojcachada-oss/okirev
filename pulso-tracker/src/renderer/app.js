@@ -400,7 +400,12 @@ async function refreshToday(silent) {
   try {
     const blocks = await apiGet(state.config.apiUrl, `/attendance/week/${state.config.employeeId}`);
     state.today = blocks;
-    renderBlocks(blocks);
+    try {
+      renderBlocks(blocks);
+    } catch (err) {
+      console.error("No se pudo dibujar el historial:", err.message);
+      window.pulso.logIssue("renderBlocks", `${err.message} — cantidad de bloques: ${blocks.length}`);
+    }
     await fetchSettings();
     updateStatusFromBlocks(blocks);
     await refreshBreakStatus();
