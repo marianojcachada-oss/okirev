@@ -110,11 +110,14 @@ export const EFFECTIVE_CATEGORY_SQL = `
 // Improductivo, Neutral, Inactivo) is a breakdown OF worked time, never something that can
 // exceed it. Without this, a tracker bug (or a gap between shifts) could keep logging activity
 // outside any attendance block, inflating totals past what was actually clocked.
+// A block that's still open (no check_out_at) is capped at 24h after check-in for this check —
+// covers a legitimate overnight shift, but stops a block someone forgot to close from staying
+// "open until right now" indefinitely and validating unrelated activity days later.
 export const WITHIN_ATTENDANCE_SQL = `
   exists (
     select 1 from attendance att
     where att.employee_id = a.employee_id
       and a.occurred_at >= att.check_in_at
-      and a.occurred_at <= coalesce(att.check_out_at, now())
+      and a.occurred_at <= least(coalesce(att.check_out_at, now()), att.check_in_at + interval '24 hours')
   )
 `;

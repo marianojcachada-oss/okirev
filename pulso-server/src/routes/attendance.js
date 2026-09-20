@@ -47,12 +47,16 @@ router.get("/", requireSession, requirePermission("asistencia"), async (req, res
   res.json(rows.map(mapRow));
 });
 
-// GET /api/attendance/today -- all employees' blocks for today (dashboard only, Empleados page)
+// GET /api/attendance/today?from=&to= -- all employees' blocks for a date range (default:
+// today), plus any block still open regardless of date. Used by Empleados' expandable detail —
+// when a wider range like "esta semana" is selected there, this brings all of it, not just today.
 router.get("/today", requireSession, requirePermission("empleados"), async (req, res) => {
   const today = todayDateStr();
+  const from = req.query.from || today;
+  const to = req.query.to || today;
   const { rows } = await query(
-    "select * from attendance where date = $1 or check_out_at is null order by check_in_at",
-    [today]
+    "select * from attendance where (date between $1 and $2) or check_out_at is null order by date desc, check_in_at desc",
+    [from, to]
   );
   res.json(rows.map(mapRow));
 });

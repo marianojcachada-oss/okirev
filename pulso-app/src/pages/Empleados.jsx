@@ -7,6 +7,15 @@ import { Card, StatusPill, Initials, Th, Td, StateMessage, Modal } from "../comp
 import { formatDuration } from "../utils/duration";
 import { DATE_PRESETS, computeRange, atlantaToday } from "../utils/dateRanges";
 
+function formatDayLabel(dateStr) {
+  const todayStr = atlantaToday();
+  if (dateStr === todayStr) return "Hoy";
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const date = new Date(y, m - 1, d); // componentes locales, evita el corrimiento de un dia al parsear como UTC
+  const label = date.toLocaleDateString("es-AR", { weekday: "short", day: "numeric", month: "short" });
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
 function DurationMetric({ seconds, color }) {
   return (
     <span className="pulso-mono" style={{ color: color || COLORS.textPrimary }}>
@@ -417,7 +426,7 @@ export default function Empleados() {
 
   const { data: employees, loading: loadingEmployees, error: errorEmployees, refetch } = useApi("/employees");
   const { data: summary, loading: loadingSummary, error: errorSummary } = useApi(`/employees/summary?from=${from}&to=${to}`);
-  const { data: attendanceToday, loading: loadingAttendance, error: errorAttendance } = useApi("/attendance/today");
+  const { data: attendanceToday, loading: loadingAttendance, error: errorAttendance } = useApi(`/attendance/today?from=${from}&to=${to}`);
   const { data: teams } = useApi("/teams/full");
   const { data: roles } = useApi("/roles");
   const { data: trackingConfigs } = useApi("/tracking-configs");
@@ -660,26 +669,54 @@ export default function Empleados() {
                               );
                             })()}
                             {blocks.length === 0 ? (
-                              <span style={{ fontSize: 12.5, color: COLORS.textTertiary }}>Sin check-in registrado hoy.</span>
+                              <span style={{ fontSize: 12.5, color: COLORS.textTertiary }}>Sin check-in registrado en este rango.</span>
                             ) : (
-                              <table style={{ width: "100%", borderCollapse: "collapse", maxWidth: 480 }}>
-                                <thead>
-                                  <tr>
-                                    <Th align="left">Check-in (1015)</Th>
-                                    <Th align="left">Check-out (1025)</Th>
-                                    <Th align="right">Duración</Th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {blocks.map((b) => (
-                                    <tr key={b.id}>
-                                      <Td mono>{b.checkIn}</Td>
-                                      <Td mono>{b.checkOut ?? "—"}</Td>
-                                      <Td align="right" mono>{b.checkOut ? b.hours : `${b.hours} (en curso)`}</Td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
+                              (() => {
+                                const byDay = new Map();
+                                for (const b of blocks) {
+                                  if (!byDay.has(b.date)) byDay.set(b.date, []);
+                                  byDay.get(b.date).push(b);
+                                }
+                                const days = Array.from(byDay.keys()).sort((a, b) => b.localeCompare(a));
+                                const showDayHeaders = days.length > 1;
+                                return (
+                                  <table style={{ width: "100%", borderCollapse: "collapse", maxWidth: 480 }}>
+                                    <thead>
+                                      <tr>
+                                        <Th align="left">Check-in (1015)</Th>
+                                        <Th align="left">Check-out (1025)</Th>
+                                        <Th align="right">Duración</Th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {days.map((day) => (
+                                        <Fragment key={day}>
+                                          {showDayHeaders && (
+                                            <tr>
+                                              <td
+                                                colSpan={3}
+                                                style={{
+                                                  background: COLORS.bg, fontWeight: 600, fontSize: 12, color: COLORS.textSecondary,
+                                                  padding: "8px 14px", borderBottom: `1px solid ${COLORS.border}`,
+                                                }}
+                                              >
+                                                {formatDayLabel(day)}
+                                              </td>
+                                            </tr>
+                                          )}
+                                          {byDay.get(day).map((b) => (
+                                            <tr key={b.id}>
+                                              <Td mono>{b.checkIn}</Td>
+                                              <Td mono>{b.checkOut ?? "—"}</Td>
+                                              <Td align="right" mono>{b.checkOut ? b.hours : `${b.hours} (en curso)`}</Td>
+                                            </tr>
+                                          ))}
+                                        </Fragment>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                );
+                              })()
                             )}
                           </div>
                         </Td>
