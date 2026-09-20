@@ -512,7 +512,7 @@ function setupUpdateBanner() {
     window.pulso.checkForUpdatesNow();
   });
 
-  window.pulso.onUpdateStatus(({ state: updateState, version, percent }) => {
+  window.pulso.onUpdateStatus(({ state: updateState, version, percent, message }) => {
     clearTimeout(hideTimeout);
     banner.classList.remove("hidden");
     if (updateState === "checking") {
@@ -534,9 +534,9 @@ function setupUpdateBanner() {
       hideTimeout = setTimeout(() => banner.classList.add("hidden"), 4000);
     } else if (updateState === "error") {
       banner.classList.remove("ready");
-      text.textContent = "Hubo un problema con la actualización";
+      text.textContent = message ? `Error al actualizar: ${message}` : "Hubo un problema con la actualización";
       btn.classList.add("hidden");
-      hideTimeout = setTimeout(() => banner.classList.add("hidden"), 4000);
+      hideTimeout = setTimeout(() => banner.classList.add("hidden"), 8000);
     }
   });
 }

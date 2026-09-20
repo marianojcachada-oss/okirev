@@ -95,6 +95,7 @@ function setupAutoUpdate() {
 
   autoUpdater.on("error", (err) => {
     console.error("Error buscando actualizaciones:", err.message);
+    logSyncIssue("autoUpdater", err.message);
     if (mainWindow) mainWindow.webContents.send("update:status", { state: "error", message: err.message });
   });
 
