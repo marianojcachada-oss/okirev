@@ -36,23 +36,54 @@ function friendlySiteName(hostname) {
   return mainLabel.charAt(0).toUpperCase() + mainLabel.slice(1);
 }
 
-// El texto que se lee de la barra de direcciones a veces no trae el "https://" adelante (los
-// navegadores lo esconden visualmente) — lo agregamos si falta antes de parsearlo como URL real.
-function extractHostname(rawUrl) {
-  if (!rawUrl) return null;
-  const trimmed = rawUrl.trim();
-  if (!trimmed) return null;
-  const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
-  try {
-    return new URL(withScheme).hostname.replace(/^www\./, "");
-  } catch {
-    return null;
+// El título de la ventana SIEMPRE está disponible (a diferencia de la URL real, que necesita
+// la extensión del navegador) — pero trae basura variable (nombre del chat, de la reunión,
+// del documento). En vez de guardar el título completo (lo que infla el catálogo sin control),
+// lo comparamos contra una lista de sitios conocidos y solo usamos el nombre limpio si
+// reconocemos alguno — si no reconoce nada, cae al nombre del navegador solo, como siempre.
+const TITLE_SITE_PATTERNS = [
+  { match: /microsoft teams/i, name: "Microsoft Teams" },
+  { match: /taxicaller|central de despacho/i, name: "Taxi caller" },
+  { match: /youtube/i, name: "Youtube" },
+  { match: /power automate/i, name: "Microsoft Power Automate" },
+  { match: /outlook/i, name: "Outlook" },
+  { match: /gmail/i, name: "Gmail" },
+  { match: /google drive/i, name: "Google Drive" },
+  { match: /google docs/i, name: "Google Docs" },
+  { match: /whatsapp/i, name: "WhatsApp" },
+  { match: /instagram/i, name: "Instagram" },
+  { match: /facebook/i, name: "Facebook" },
+  { match: /ringcentral/i, name: "RingCentral" },
+  { match: /github/i, name: "GitHub" },
+  { match: /salesforce/i, name: "Salesforce" },
+  { match: /zendesk/i, name: "Zendesk" },
+  { match: /sharepoint/i, name: "SharePoint" },
+  { match: /supabase/i, name: "Supabase" },
+  { match: /notion/i, name: "Notion" },
+  { match: /slack/i, name: "Slack" },
+  { match: /canva/i, name: "Canva" },
+  { match: /zoom/i, name: "Zoom" },
+  { match: /claude/i, name: "Claude" },
+];
+
+function matchKnownSite(title) {
+  if (!title) return null;
+  for (const p of TITLE_SITE_PATTERNS) {
+    if (p.match.test(title)) return p.name;
   }
+  return null;
 }
 
-// "Browser - Nombre del sitio - https://hostname" — the root URL only (no path, no query
-// string), so every visit to the same site produces the exact same label. Using the full URL
-// with paths/params here would blow up the app catalog into one entry per unique page visited.
+// "Browser - Nombre del sitio" — sin URL, porque esto viene del título reconocido, no de una
+// URL real. Se muestra igual de limpio, solo que sin el link.
+function browserTitleLabel(browserName, siteName) {
+  return `${browserName} - ${siteName}`;
+}
+
+// "Browser - Nombre del sitio - https://hostname" — la URL real completa, para cuando SÍ hay
+// una extensión de navegador instalada y reportando el hostname de verdad (opcional, no
+// requerido). El root URL únicamente (no path, no query string), así toda visita al mismo
+// sitio da siempre la misma etiqueta.
 function browserActivityLabel(browserName, hostname) {
   return `${browserName} - ${friendlySiteName(hostname)} - https://${hostname}`;
 }
@@ -86,57 +117,7 @@ $sb = New-Object System.Text.StringBuilder 512
 $procId = 0
 [PulsoWin32]::GetWindowThreadProcessId($hwnd, [ref]$procId) | Out-Null
 try { $name = (Get-Process -Id $procId -ErrorAction Stop).ProcessName } catch { $name = "desconocido" }
-
-$url = ""
-$dbg = ""
-if ($name -match "chrome|msedge|opera|brave|firefox") {
-  try {
-    Add-Type -AssemblyName UIAutomationClient
-    Add-Type -AssemblyName UIAutomationTypes
-    $root = [System.Windows.Automation.AutomationElement]::FromHandle($hwnd)
-    if ($root -eq $null) {
-      $dbg = "sin-root"
-    } else {
-      $editCond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Edit)
-      $edits = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $editCond)
-      $dbg = "edits=$($edits.Count)"
-      $found = $null
-      # Primero: por el nombre de clase interno de Chromium para el omnibox — estable sin importar el idioma de la interfaz
-      foreach ($el in $edits) {
-        if ($el.Current.ClassName -match "Omnibox") { $found = $el; break }
-      }
-      # Firefox no usa esa clase — su barra de direcciones tiene el id interno "urlbar-input", tambien estable sin importar el idioma
-      if ($found -eq $null) {
-        foreach ($el in $edits) {
-          if ($el.Current.AutomationId -match "urlbar") { $found = $el; break }
-        }
-      }
-      # Si ninguna de las dos aparece: por el texto visible en varios idiomas, por si el navegador no usa ninguna de esas dos
-      if ($found -eq $null) {
-        foreach ($el in $edits) {
-          if ($el.Current.Name -match "address|direcci|búsqueda|busqueda|search|omnibox|urlbar") { $found = $el; break }
-        }
-      }
-      if ($found -ne $null) {
-        $dbg += "|clase=$($found.Current.ClassName)|id=$($found.Current.AutomationId)|nombre=$($found.Current.Name)"
-        try {
-          $pattern = $found.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
-          $url = $pattern.Current.Value
-        } catch { $dbg += "|sin-valuepattern" }
-      } else {
-        $dbg += "|sin-coincidencia"
-      }
-    }
-  } catch {
-    $dbg = "excepcion:$($_.Exception.Message)"
-  }
-  try {
-    $logPath = Join-Path $env:TEMP "oklrev-uia-debug.txt"
-    "$(Get-Date -Format o) | proceso=$name | url=$url | $dbg" | Out-File -FilePath $logPath -Encoding utf8 -Force
-  } catch {}
-}
-
-Write-Output "$name|$url|$($sb.ToString())"
+Write-Output "$name|$($sb.ToString())"
 `;
 
 let scriptPath = null;
@@ -151,7 +132,7 @@ function ensureScriptFile() {
 
 async function getForegroundWindow() {
   if (process.platform !== "win32") {
-    return { app: "No soportado en esta plataforma", title: "", uiaUrl: "" };
+    return { app: "No soportado en esta plataforma", title: "" };
   }
   try {
     const script = ensureScriptFile();
@@ -160,11 +141,11 @@ async function getForegroundWindow() {
       ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script],
       { timeout: 5000, windowsHide: true, encoding: "utf8" }
     );
-    const [procName, uiaUrl, ...titleParts] = stdout.trim().split("|");
-    return { app: procName || "Desconocido", uiaUrl: (uiaUrl || "").trim(), title: titleParts.join("|").trim() };
+    const [procName, ...titleParts] = stdout.trim().split("|");
+    return { app: procName || "Desconocido", title: titleParts.join("|").trim() };
   } catch (err) {
     console.error("getForegroundWindow falló:", err.message);
-    return { app: "Desconocido", title: "", uiaUrl: "" };
+    return { app: "Desconocido", title: "" };
   }
 }
 
@@ -210,8 +191,13 @@ async function tick() {
       const win = await getForegroundWindow();
       const isBrowser = BROWSER_PROCESSES.some((p) => win.app.toLowerCase().includes(p));
       if (isBrowser) {
-        const hostname = extractHostname(win.uiaUrl) || getCurrentBrowserTab()?.hostname || null;
-        label = hostname ? browserActivityLabel(win.app, hostname) : win.app;
+        const tab = getCurrentBrowserTab(); // extensión del navegador, si está instalada — da la URL real
+        if (tab) {
+          label = browserActivityLabel(win.app, tab.hostname);
+        } else {
+          const knownSite = matchKnownSite(win.title);
+          label = knownSite ? browserTitleLabel(win.app, knownSite) : win.app;
+        }
       } else {
         label = win.app;
       }

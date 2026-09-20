@@ -4,7 +4,7 @@
   "version": "0.7.0",
   "description": "App de escritorio para que los operadores marquen check-in (1015) y check-out (1025)",
   "main": "src/main.js",
-  "author": "D005 Manager",
+  "author": "D005 MANAGER",
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder",
