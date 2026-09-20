@@ -36,6 +36,20 @@ function friendlySiteName(hostname) {
   return mainLabel.charAt(0).toUpperCase() + mainLabel.slice(1);
 }
 
+// El texto que se lee de la barra de direcciones a veces no trae el "https://" adelante (los
+// navegadores lo esconden visualmente) — lo agregamos si falta antes de parsearlo como URL real.
+function extractHostname(rawUrl) {
+  if (!rawUrl) return null;
+  const trimmed = rawUrl.trim();
+  if (!trimmed) return null;
+  const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  try {
+    return new URL(withScheme).hostname.replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+}
+
 // "Browser - Nombre del sitio - https://hostname" — the root URL only (no path, no query
 // string), so every visit to the same site produces the exact same label. Using the full URL
 // with paths/params here would blow up the app catalog into one entry per unique page visited.
@@ -72,7 +86,57 @@ $sb = New-Object System.Text.StringBuilder 512
 $procId = 0
 [PulsoWin32]::GetWindowThreadProcessId($hwnd, [ref]$procId) | Out-Null
 try { $name = (Get-Process -Id $procId -ErrorAction Stop).ProcessName } catch { $name = "desconocido" }
-Write-Output "$name|$($sb.ToString())"
+
+$url = ""
+$dbg = ""
+if ($name -match "chrome|msedge|opera|brave|firefox") {
+  try {
+    Add-Type -AssemblyName UIAutomationClient
+    Add-Type -AssemblyName UIAutomationTypes
+    $root = [System.Windows.Automation.AutomationElement]::FromHandle($hwnd)
+    if ($root -eq $null) {
+      $dbg = "sin-root"
+    } else {
+      $editCond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Edit)
+      $edits = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $editCond)
+      $dbg = "edits=$($edits.Count)"
+      $found = $null
+      # Primero: por el nombre de clase interno de Chromium para el omnibox — estable sin importar el idioma de la interfaz
+      foreach ($el in $edits) {
+        if ($el.Current.ClassName -match "Omnibox") { $found = $el; break }
+      }
+      # Firefox no usa esa clase — su barra de direcciones tiene el id interno "urlbar-input", tambien estable sin importar el idioma
+      if ($found -eq $null) {
+        foreach ($el in $edits) {
+          if ($el.Current.AutomationId -match "urlbar") { $found = $el; break }
+        }
+      }
+      # Si ninguna de las dos aparece: por el texto visible en varios idiomas, por si el navegador no usa ninguna de esas dos
+      if ($found -eq $null) {
+        foreach ($el in $edits) {
+          if ($el.Current.Name -match "address|direcci|búsqueda|busqueda|search|omnibox|urlbar") { $found = $el; break }
+        }
+      }
+      if ($found -ne $null) {
+        $dbg += "|clase=$($found.Current.ClassName)|id=$($found.Current.AutomationId)|nombre=$($found.Current.Name)"
+        try {
+          $pattern = $found.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
+          $url = $pattern.Current.Value
+        } catch { $dbg += "|sin-valuepattern" }
+      } else {
+        $dbg += "|sin-coincidencia"
+      }
+    }
+  } catch {
+    $dbg = "excepcion:$($_.Exception.Message)"
+  }
+  try {
+    $logPath = Join-Path $env:TEMP "oklrev-uia-debug.txt"
+    "$(Get-Date -Format o) | proceso=$name | url=$url | $dbg" | Out-File -FilePath $logPath -Encoding utf8 -Force
+  } catch {}
+}
+
+Write-Output "$name|$url|$($sb.ToString())"
 `;
 
 let scriptPath = null;
@@ -87,7 +151,7 @@ function ensureScriptFile() {
 
 async function getForegroundWindow() {
   if (process.platform !== "win32") {
-    return { app: "No soportado en esta plataforma", title: "" };
+    return { app: "No soportado en esta plataforma", title: "", uiaUrl: "" };
   }
   try {
     const script = ensureScriptFile();
@@ -96,11 +160,11 @@ async function getForegroundWindow() {
       ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script],
       { timeout: 5000, windowsHide: true, encoding: "utf8" }
     );
-    const [procName, ...titleParts] = stdout.trim().split("|");
-    return { app: procName || "Desconocido", title: titleParts.join("|").trim() };
+    const [procName, uiaUrl, ...titleParts] = stdout.trim().split("|");
+    return { app: procName || "Desconocido", uiaUrl: (uiaUrl || "").trim(), title: titleParts.join("|").trim() };
   } catch (err) {
     console.error("getForegroundWindow falló:", err.message);
-    return { app: "Desconocido", title: "" };
+    return { app: "Desconocido", title: "", uiaUrl: "" };
   }
 }
 
@@ -146,8 +210,8 @@ async function tick() {
       const win = await getForegroundWindow();
       const isBrowser = BROWSER_PROCESSES.some((p) => win.app.toLowerCase().includes(p));
       if (isBrowser) {
-        const tab = getCurrentBrowserTab();
-        label = tab ? browserActivityLabel(win.app, tab.hostname) : win.app;
+        const hostname = extractHostname(win.uiaUrl) || getCurrentBrowserTab()?.hostname || null;
+        label = hostname ? browserActivityLabel(win.app, hostname) : win.app;
       } else {
         label = win.app;
       }
