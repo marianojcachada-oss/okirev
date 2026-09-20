@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage, dialog } = require("electron");
 const path = require("path");
 const os = require("os");
+const fs = require("fs");
 const { autoUpdater } = require("electron-updater");
 const { readConfig, writeConfig } = require("./store");
 const tracker = require("./tracker");
@@ -166,6 +167,18 @@ function authHeaders(token) {
   return headers;
 }
 
+const syncLogPath = path.join(os.tmpdir(), "oklrev-sync-debug.txt");
+function logSyncIssue(context, detail) {
+  try {
+    const line = `${new Date().toISOString()} | ${context} | ${detail}\n`;
+    if (fs.existsSync(syncLogPath) && fs.statSync(syncLogPath).size > 50000) {
+      const tail = fs.readFileSync(syncLogPath, "utf-8").slice(-20000);
+      fs.writeFileSync(syncLogPath, tail, "utf-8");
+    }
+    fs.appendFileSync(syncLogPath, line, "utf-8");
+  } catch {}
+}
+
 ipcMain.handle("tracking:start", (_event, payload) => {
   const { apiUrl, employeeId, sessionToken, idleThresholdMinutes } = payload;
 
@@ -178,13 +191,18 @@ ipcMain.handle("tracking:start", (_event, payload) => {
           duration: formatDuration(record.durationMs),
         };
         if (record.category) body.category = record.category; // only set for "Inactivo"; otherwise the backend resolves it from the catalog
-        await fetch(`${apiUrl}/activities`, {
+        const res = await fetch(`${apiUrl}/activities`, {
           method: "POST",
           headers: authHeaders(sessionToken),
           body: JSON.stringify(body),
         });
+        if (!res.ok) {
+          const text = await res.text().catch(() => "");
+          logSyncIssue("POST /activities", `HTTP ${res.status} — ${text.slice(0, 300)} — app enviada: ${record.app}`);
+        }
       } catch (err) {
         console.error("No se pudo enviar actividad:", err.message);
+        logSyncIssue("POST /activities", `error de red: ${err.message}`);
       }
     },
     statusCallback: async ({ status, app: appLabel }) => {
@@ -192,13 +210,18 @@ ipcMain.handle("tracking:start", (_event, payload) => {
         mainWindow.webContents.send("tracking:update", { status, app: appLabel });
       }
       try {
-        await fetch(`${apiUrl}/employees/${employeeId}`, {
+        const res = await fetch(`${apiUrl}/employees/${employeeId}`, {
           method: "PATCH",
           headers: authHeaders(sessionToken),
           body: JSON.stringify({ status, app: appLabel }),
         });
+        if (!res.ok) {
+          const text = await res.text().catch(() => "");
+          logSyncIssue("PATCH /employees", `HTTP ${res.status} — ${text.slice(0, 300)}`);
+        }
       } catch (err) {
         console.error("No se pudo actualizar el estado del empleado:", err.message);
+        logSyncIssue("PATCH /employees", `error de red: ${err.message}`);
       }
     },
   });
