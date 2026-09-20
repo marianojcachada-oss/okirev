@@ -497,21 +497,41 @@ function setupUpdateBanner() {
   const banner = $("update-banner");
   const text = $("update-banner-text");
   const btn = $("update-banner-btn");
+  let hideTimeout = null;
 
   btn.addEventListener("click", () => {
     window.pulso.installUpdate();
   });
 
-  window.pulso.onUpdateStatus(({ state: updateState, version }) => {
+  $("version-label").addEventListener("click", () => {
+    window.pulso.checkForUpdatesNow();
+  });
+
+  window.pulso.onUpdateStatus(({ state: updateState, version, percent }) => {
+    clearTimeout(hideTimeout);
     banner.classList.remove("hidden");
-    if (updateState === "downloading") {
+    if (updateState === "checking") {
       banner.classList.remove("ready");
-      text.textContent = `Descargando la versión ${version}…`;
+      text.textContent = "Buscando actualizaciones…";
+      btn.classList.add("hidden");
+    } else if (updateState === "downloading") {
+      banner.classList.remove("ready");
+      text.textContent = typeof percent === "number" ? `Descargando la versión ${version}… ${percent}%` : `Descargando la versión ${version}…`;
       btn.classList.add("hidden");
     } else if (updateState === "ready") {
       banner.classList.add("ready");
       text.textContent = `Versión ${version} lista`;
       btn.classList.remove("hidden");
+    } else if (updateState === "up-to-date") {
+      banner.classList.add("ready");
+      text.textContent = "Ya tenés la última versión";
+      btn.classList.add("hidden");
+      hideTimeout = setTimeout(() => banner.classList.add("hidden"), 4000);
+    } else if (updateState === "error") {
+      banner.classList.remove("ready");
+      text.textContent = "Hubo un problema con la actualización";
+      btn.classList.add("hidden");
+      hideTimeout = setTimeout(() => banner.classList.add("hidden"), 4000);
     }
   });
 }

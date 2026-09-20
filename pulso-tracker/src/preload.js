@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld("pulso", {
   setWindowTheme: (themeId) => ipcRenderer.invoke("window:set-theme", themeId),
   getVersion: () => ipcRenderer.invoke("app:get-version"),
   installUpdate: () => ipcRenderer.invoke("update:install"),
+  checkForUpdatesNow: () => ipcRenderer.invoke("update:check-now"),
   onTrackingUpdate: (callback) => {
     ipcRenderer.on("tracking:update", (_event, data) => callback(data));
   },

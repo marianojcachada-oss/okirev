@@ -253,7 +253,11 @@ body.compact-mode .status-card { padding: 12px; }
 }
 .footer-info { display: flex; flex-direction: column; gap: 1px; }
 .sync-label { font-size: 11px; color: var(--color-text-tertiary); }
-.version-label { font-size: 10px; color: var(--color-text-tertiary); opacity: 0.7; }
+.version-label {
+  font-size: 10px; color: var(--color-text-tertiary); opacity: 0.7;
+  background: none; border: none; padding: 0; text-align: left; cursor: pointer; font-family: inherit;
+}
+.version-label:hover { opacity: 1; text-decoration: underline; }
 .link-btn {
   background: none; border: 1px solid var(--color-border); border-radius: 8px;
   padding: 6px 10px; font-size: 12px; color: var(--color-brand); cursor: pointer;

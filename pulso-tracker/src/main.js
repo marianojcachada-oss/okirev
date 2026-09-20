@@ -66,22 +66,48 @@ function showFromTray() {
 function setupAutoUpdate() {
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
+  let pendingVersion = null;
 
   autoUpdater.on("update-available", (info) => {
-    if (mainWindow) mainWindow.webContents.send("update:status", { state: "downloading", version: info.version });
+    pendingVersion = info.version;
+    if (mainWindow) mainWindow.webContents.send("update:status", { state: "downloading", version: info.version, percent: 0 });
+  });
+
+  autoUpdater.on("download-progress", (progress) => {
+    if (mainWindow) {
+      mainWindow.webContents.send("update:status", {
+        state: "downloading",
+        version: pendingVersion,
+        percent: Math.round(progress.percent),
+        bytesPerSecond: progress.bytesPerSecond,
+      });
+    }
   });
 
   autoUpdater.on("update-downloaded", (info) => {
+    pendingVersion = null;
     if (mainWindow) mainWindow.webContents.send("update:status", { state: "ready", version: info.version });
+  });
+
+  autoUpdater.on("update-not-available", () => {
+    if (mainWindow) mainWindow.webContents.send("update:status", { state: "up-to-date" });
   });
 
   autoUpdater.on("error", (err) => {
     console.error("Error buscando actualizaciones:", err.message);
+    if (mainWindow) mainWindow.webContents.send("update:status", { state: "error", message: err.message });
   });
 
   ipcMain.handle("update:install", () => {
     isQuitting = true;
     autoUpdater.quitAndInstall();
+  });
+
+  ipcMain.handle("update:check-now", () => {
+    if (mainWindow) mainWindow.webContents.send("update:status", { state: "checking" });
+    autoUpdater.checkForUpdates().catch((err) => {
+      if (mainWindow) mainWindow.webContents.send("update:status", { state: "error", message: err.message });
+    });
   });
 
   autoUpdater.checkForUpdates().catch((err) => console.error("No se pudo chequear actualizaciones:", err.message));
