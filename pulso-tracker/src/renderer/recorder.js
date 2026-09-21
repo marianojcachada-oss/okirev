@@ -48,6 +48,13 @@ async function startScreenRecording() {
   }
 }
 
+function msUntilNextChunkBoundary() {
+  // Como los husos horarios de EE.UU. son un número entero de horas respecto a UTC, alinear
+  // por época (Date.now()) también alinea al reloj local — no hace falta convertir zona horaria.
+  const boundaryMs = (recConfig.chunkMinutes || 5) * 60 * 1000;
+  return boundaryMs - (Date.now() % boundaryMs);
+}
+
 function beginRecordingChunk() {
   if (!recStream) return;
   recChunks = [];
@@ -71,7 +78,7 @@ function beginRecordingChunk() {
   clearTimeout(recChunkTimer);
   recChunkTimer = setTimeout(() => {
     if (recRecorder && recRecorder.state === "recording") recRecorder.stop();
-  }, (recConfig.chunkMinutes || 5) * 60 * 1000);
+  }, msUntilNextChunkBoundary());
 }
 
 async function uploadRecordingChunk(blob, durationSeconds) {

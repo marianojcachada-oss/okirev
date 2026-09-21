@@ -40,7 +40,7 @@ const SELECT_BASE = `
 `;
 
 // GET /api/employees
-router.get("/", requireSession, requirePermission("empleados", "asistencia", "actividades", "equipos", "tiempo-real"), async (req, res) => {
+router.get("/", requireSession, requirePermission("empleados", "asistencia", "actividades", "equipos", "tiempo-real", "grabaciones"), async (req, res) => {
   const { rows } = await query(`${SELECT_BASE} order by e.name`);
   res.json(rows.map(mapRow));
 });
