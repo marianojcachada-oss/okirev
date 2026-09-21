@@ -142,6 +142,8 @@ create table if not exists settings (
   recording_fps integer not null default 3, -- cuadros por segundo — bajo a propósito, esto es para auditar, no para ver fluido
   recording_quality text not null default 'medium', -- 'low' | 'medium' | 'high' -> mapea a un bitrate de video
   recording_chunk_minutes integer not null default 5, -- cada cuanto se corta y sube un pedazo nuevo
+  recording_max_width integer not null default 1280, -- resolución máxima de captura — a mayor valor, más carga en el procesador del operador
+  recording_preset text not null default 'balanceado', -- 'ahorro' | 'balanceado' | 'alta_calidad' | 'personalizado' — solo para recordar qué preset eligió el admin
   recording_retention_days integer not null default 30, -- cuanto se guarda antes de borrarse solo
   desktop_token text,
   constraint settings_single_row check (id = 1)

@@ -8,6 +8,8 @@ alter table settings add column if not exists recording_fps integer not null def
 alter table settings add column if not exists recording_quality text not null default 'medium';
 alter table settings add column if not exists recording_chunk_minutes integer not null default 5;
 alter table settings add column if not exists recording_retention_days integer not null default 30;
+alter table settings add column if not exists recording_max_width integer not null default 1280;
+alter table settings add column if not exists recording_preset text not null default 'balanceado';
 
 create table if not exists screen_recordings (
   id text primary key,

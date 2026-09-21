@@ -36,6 +36,7 @@ async function startScreenRecording() {
           chromeMediaSourceId: sourceId,
           minFrameRate: recConfig.fps,
           maxFrameRate: recConfig.fps,
+          maxWidth: recConfig.maxWidth || 1280,
         },
       },
     });

@@ -12,6 +12,8 @@ function mapSettings(row) {
     quality: row.recording_quality,
     chunkMinutes: row.recording_chunk_minutes,
     retentionDays: row.recording_retention_days,
+    maxWidth: row.recording_max_width,
+    preset: row.recording_preset,
     storageConfigured: isStorageConfigured(),
   };
 }
@@ -25,7 +27,7 @@ router.get("/settings", requireSession, async (req, res) => {
 
 // PUT /api/recordings/settings — solo un admin con permiso de Ajustes puede cambiar esto.
 router.put("/settings", requireSession, requirePermission("ajustes"), async (req, res) => {
-  const { enabled, fps, quality, chunkMinutes, retentionDays } = req.body;
+  const { enabled, fps, quality, chunkMinutes, retentionDays, maxWidth, preset } = req.body;
   const fields = [];
   const values = [];
   let i = 1;
@@ -34,6 +36,8 @@ router.put("/settings", requireSession, requirePermission("ajustes"), async (req
   if (quality !== undefined) { fields.push(`recording_quality = $${i++}`); values.push(quality); }
   if (chunkMinutes !== undefined) { fields.push(`recording_chunk_minutes = $${i++}`); values.push(Number(chunkMinutes)); }
   if (retentionDays !== undefined) { fields.push(`recording_retention_days = $${i++}`); values.push(Number(retentionDays)); }
+  if (maxWidth !== undefined) { fields.push(`recording_max_width = $${i++}`); values.push(Number(maxWidth)); }
+  if (preset !== undefined) { fields.push(`recording_preset = $${i++}`); values.push(preset); }
   if (fields.length > 0) {
     await query(`update settings set ${fields.join(", ")} where id = 1`, values);
   }

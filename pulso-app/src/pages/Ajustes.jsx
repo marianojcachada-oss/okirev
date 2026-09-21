@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Ban, X, Plus, Pencil, Trash2, Shield, Palette, AlertTriangle, PowerOff, RotateCcw } from "lucide-react";
+import { Ban, X, Plus, Pencil, Trash2, Shield, Palette, AlertTriangle, PowerOff, RotateCcw, Video } from "lucide-react";
 import { COLORS, NAV_ITEMS, THEMES } from "../theme";
 import { useApi } from "../hooks/useApi";
 import { api } from "../api/client";
@@ -376,6 +376,172 @@ function ThemeSection() {
   );
 }
 
+
+// Los mismos valores de bitrate que usa el tracker para grabar — se mantienen iguales acá para
+// que la estimación de almacenamiento sea real, no un número inventado aparte.
+const RECORDING_BITRATES = { low: 150000, medium: 350000, high: 800000 };
+const RECORDING_PRESETS = {
+  ahorro: { fps: 2, quality: "low", maxWidth: 960, chunkMinutes: 5 },
+  balanceado: { fps: 3, quality: "medium", maxWidth: 1280, chunkMinutes: 5 },
+  alta_calidad: { fps: 5, quality: "high", maxWidth: 1920, chunkMinutes: 5 },
+};
+
+function estimateGbPerOperatorPerShift(quality, hours = 8) {
+  const bitsPerSecond = RECORDING_BITRATES[quality] || RECORDING_BITRATES.medium;
+  const bytes = (bitsPerSecond * hours * 3600) / 8;
+  return bytes / 1e9;
+}
+
+function RecordingSection() {
+  const { data: recSettings, loading, error, refetch } = useApi("/recordings/settings");
+  const [saving, setSaving] = useState(false);
+
+  async function patchRecordingSettings(patch) {
+    setSaving(true);
+    try {
+      await api.put("/recordings/settings", patch);
+      refetch();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function applyPreset(presetName) {
+    if (presetName === "personalizado") {
+      await patchRecordingSettings({ preset: "personalizado" });
+      return;
+    }
+    await patchRecordingSettings({ preset: presetName, ...RECORDING_PRESETS[presetName] });
+  }
+
+  if (loading || error) return <StateMessage loading={loading} error={error} onRetry={refetch} />;
+
+  const isCustom = recSettings.preset === "personalizado";
+  const toggleStyle = (on) => ({
+    flexShrink: 0, width: 40, height: 22, borderRadius: 20, border: "none", cursor: "pointer", position: "relative",
+    background: on ? COLORS.brand : COLORS.surfaceHover, transition: "background 0.15s",
+  });
+  const knobStyle = (on) => ({
+    position: "absolute", top: 2, left: on ? 20 : 2, width: 18, height: 18, borderRadius: "50%", background: "#fff", transition: "left 0.15s",
+  });
+  const fieldLabelStyle = { fontSize: 12, color: COLORS.textSecondary, marginBottom: 4, display: "block" };
+  const selectStyle = {
+    width: "100%", background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 8,
+    padding: "7px 10px", color: COLORS.textPrimary, fontSize: 12.5,
+  };
+
+  return (
+    <Card style={{ border: `1px solid ${COLORS.critical}` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+        <Video size={16} color={COLORS.critical} />
+        <SectionHeading>Grabación de pantalla</SectionHeading>
+      </div>
+      <p style={{ fontSize: 12.5, color: COLORS.textTertiary, margin: "0 0 14px" }}>
+        Graba la pantalla completa de cada operador durante su turno. Es una función sensible — avisale al equipo antes de activarla.
+      </p>
+
+      {!recSettings.storageConfigured && (
+        <div style={{
+          background: "rgba(240,85,90,0.1)", border: `1px solid ${COLORS.critical}`, borderRadius: 8,
+          padding: "10px 12px", fontSize: 12.5, color: COLORS.critical, marginBottom: 14,
+        }}>
+          El almacenamiento (Supabase Storage) todavía no está configurado en el servidor — aunque lo actives acá, no va a grabar nada hasta que esté listo del otro lado.
+        </div>
+      )}
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+        <div>
+          <div style={{ fontSize: 13, color: COLORS.textPrimary }}>Grabar la pantalla durante el turno</div>
+          <div style={{ fontSize: 11.5, color: COLORS.textTertiary, marginTop: 2 }}>Apagado por default.</div>
+        </div>
+        <button
+          onClick={() => patchRecordingSettings({ enabled: !recSettings.enabled })}
+          role="switch" aria-checked={recSettings.enabled} disabled={saving}
+          style={toggleStyle(recSettings.enabled)}
+        >
+          <span style={knobStyle(recSettings.enabled)} />
+        </button>
+      </div>
+
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 12.5, color: COLORS.textSecondary, marginBottom: 8, fontWeight: 600 }}>Prioridad</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {[
+            { id: "ahorro", label: "Ahorro de almacenamiento" },
+            { id: "balanceado", label: "Balanceado" },
+            { id: "alta_calidad", label: "Alta calidad" },
+            { id: "personalizado", label: "Personalizado" },
+          ].map((p) => (
+            <button
+              key={p.id}
+              onClick={() => applyPreset(p.id)}
+              disabled={saving}
+              style={{
+                padding: "7px 14px", borderRadius: 20, fontSize: 12.5, cursor: "pointer",
+                border: `1px solid ${recSettings.preset === p.id ? COLORS.brand : COLORS.border}`,
+                background: recSettings.preset === p.id ? "rgba(108,123,255,0.14)" : "transparent",
+                color: recSettings.preset === p.id ? COLORS.textPrimary : COLORS.textSecondary,
+              }}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {isCustom && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+          <div>
+            <label style={fieldLabelStyle}>Cuadros por segundo</label>
+            <select style={selectStyle} value={recSettings.fps} disabled={saving}
+              onChange={(e) => patchRecordingSettings({ fps: Number(e.target.value) })}>
+              {[1, 2, 3, 4, 5, 8, 10].map((v) => <option key={v} value={v}>{v} fps</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={fieldLabelStyle}>Resolución máxima</label>
+            <select style={selectStyle} value={recSettings.maxWidth} disabled={saving}
+              onChange={(e) => patchRecordingSettings({ maxWidth: Number(e.target.value) })}>
+              <option value={960}>960px (más liviano)</option>
+              <option value={1280}>1280px</option>
+              <option value={1920}>1920px (más nítido)</option>
+            </select>
+          </div>
+          <div>
+            <label style={fieldLabelStyle}>Calidad de compresión</label>
+            <select style={selectStyle} value={recSettings.quality} disabled={saving}
+              onChange={(e) => patchRecordingSettings({ quality: e.target.value })}>
+              <option value="low">Baja</option>
+              <option value="medium">Media</option>
+              <option value="high">Alta</option>
+            </select>
+          </div>
+          <div>
+            <label style={fieldLabelStyle}>Minutos por pedazo</label>
+            <select style={selectStyle} value={recSettings.chunkMinutes} disabled={saving}
+              onChange={(e) => patchRecordingSettings({ chunkMinutes: Number(e.target.value) })}>
+              {[2, 5, 10, 15, 30].map((v) => <option key={v} value={v}>{v} minutos</option>)}
+            </select>
+          </div>
+        </div>
+      )}
+
+      <div style={{ marginBottom: 16 }}>
+        <label style={fieldLabelStyle}>Días de retención antes de borrarse solas</label>
+        <select style={{ ...selectStyle, maxWidth: 220 }} value={recSettings.retentionDays} disabled={saving}
+          onChange={(e) => patchRecordingSettings({ retentionDays: Number(e.target.value) })}>
+          {[7, 14, 30, 60, 90].map((v) => <option key={v} value={v}>{v} días</option>)}
+        </select>
+      </div>
+
+      <div style={{ background: COLORS.bg, borderRadius: 8, padding: "10px 12px", fontSize: 12, color: COLORS.textSecondary }}>
+        Con esta configuración: ~{estimateGbPerOperatorPerShift(recSettings.quality).toFixed(2)} GB por operador, por turno de 8 horas.
+        Multiplicá por tu cantidad de operadores activos por día para estimar el total.
+      </div>
+    </Card>
+  );
+}
+
 function SuperAdminSection() {
   const [disconnecting, setDisconnecting] = useState(false);
   const [resetting, setResetting] = useState(false);
@@ -507,6 +673,7 @@ export default function Ajustes() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18, maxWidth: 640 }}>
+      <RecordingSection />
       {user?.isSuperAdmin && <SuperAdminSection />}
       <ThemeSection />
       <Card>
