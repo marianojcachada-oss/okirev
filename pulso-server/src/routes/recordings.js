@@ -14,6 +14,7 @@ function mapSettings(row) {
     retentionDays: row.recording_retention_days,
     maxWidth: row.recording_max_width,
     preset: row.recording_preset,
+    audioEnabled: row.recording_audio_enabled,
     storageConfigured: isStorageConfigured(),
   };
 }
@@ -27,7 +28,7 @@ router.get("/settings", requireSession, async (req, res) => {
 
 // PUT /api/recordings/settings — solo un admin con permiso de Ajustes puede cambiar esto.
 router.put("/settings", requireSession, requirePermission("ajustes"), async (req, res) => {
-  const { enabled, fps, quality, chunkMinutes, retentionDays, maxWidth, preset } = req.body;
+  const { enabled, fps, quality, chunkMinutes, retentionDays, maxWidth, preset, audioEnabled } = req.body;
   const fields = [];
   const values = [];
   let i = 1;
@@ -38,6 +39,7 @@ router.put("/settings", requireSession, requirePermission("ajustes"), async (req
   if (retentionDays !== undefined) { fields.push(`recording_retention_days = $${i++}`); values.push(Number(retentionDays)); }
   if (maxWidth !== undefined) { fields.push(`recording_max_width = $${i++}`); values.push(Number(maxWidth)); }
   if (preset !== undefined) { fields.push(`recording_preset = $${i++}`); values.push(preset); }
+  if (audioEnabled !== undefined) { fields.push(`recording_audio_enabled = $${i++}`); values.push(!!audioEnabled); }
   if (fields.length > 0) {
     await query(`update settings set ${fields.join(", ")} where id = 1`, values);
   }
@@ -65,8 +67,8 @@ router.post("/upload", requireSession, express.raw({ type: "video/webm", limit: 
 
   await query(
     `insert into screen_recordings (id, employee_id, employee_name, started_at, ended_at, storage_path, file_size_bytes, duration_seconds)
-     values ($1, $2, $3, now() - ($4 || ' seconds')::interval, now(), $5, $6, $4)`,
-    [id, employeeId, req.session.name, durationSeconds || 0, path, req.body.length]
+     values ($1, $2, $3, now() - ($4 || ' seconds')::interval, now(), $5, $6, $7)`,
+    [id, employeeId, req.session.name, durationSeconds || 0, path, req.body.length, durationSeconds]
   );
 
   res.json({ id, path });

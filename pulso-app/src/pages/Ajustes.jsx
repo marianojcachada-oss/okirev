@@ -449,7 +449,7 @@ function RecordingSection() {
         </div>
       )}
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
         <div>
           <div style={{ fontSize: 13, color: COLORS.textPrimary }}>Grabar la pantalla durante el turno</div>
           <div style={{ fontSize: 11.5, color: COLORS.textTertiary, marginTop: 2 }}>Apagado por default.</div>
@@ -460,6 +460,23 @@ function RecordingSection() {
           style={toggleStyle(recSettings.enabled)}
         >
           <span style={knobStyle(recSettings.enabled)} />
+        </button>
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, paddingTop: 14, borderTop: `1px solid ${COLORS.border}` }}>
+        <div>
+          <div style={{ fontSize: 13, color: COLORS.textPrimary }}>Grabar también audio (sistema y micrófono)</div>
+          <div style={{ fontSize: 11.5, color: COLORS.textTertiary, marginTop: 2, maxWidth: 480 }}>
+            Apagado por default. Si tus operadores atienden llamadas por la compu, esto graba la voz de quien llama también —
+            no solo la del empleado. Confirmá que tenés el aviso o consentimiento correspondiente antes de prenderlo.
+          </div>
+        </div>
+        <button
+          onClick={() => patchRecordingSettings({ audioEnabled: !recSettings.audioEnabled })}
+          role="switch" aria-checked={recSettings.audioEnabled} disabled={saving}
+          style={toggleStyle(recSettings.audioEnabled)}
+        >
+          <span style={knobStyle(recSettings.audioEnabled)} />
         </button>
       </div>
 

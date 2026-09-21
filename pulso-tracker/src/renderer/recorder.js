@@ -9,6 +9,8 @@ let recChunks = [];
 let recConfig = null;
 let recActive = false;
 let recChunkTimer = null;
+let recAudioContext = null;
+let recMicStream = null;
 
 const REC_QUALITY_BITRATES = { low: 150000, medium: 350000, high: 800000 };
 
@@ -28,8 +30,11 @@ async function startScreenRecording() {
   try {
     const sourceId = await window.pulso.getScreenSourceId();
     if (!sourceId) throw new Error("no se encontró una pantalla para grabar");
-    recStream = await navigator.mediaDevices.getUserMedia({
-      audio: false,
+
+    // El audio del sistema (lo que suena por la compu, incluida una llamada si el operador
+    // atiende una) viene del mismo origen de escritorio que el video — se pide junto.
+    const desktopStream = await navigator.mediaDevices.getUserMedia({
+      audio: recConfig.audioEnabled ? { mandatory: { chromeMediaSource: "desktop", chromeMediaSourceId: sourceId } } : false,
       video: {
         mandatory: {
           chromeMediaSource: "desktop",
@@ -40,6 +45,33 @@ async function startScreenRecording() {
         },
       },
     });
+
+    if (!recConfig.audioEnabled) {
+      recStream = desktopStream;
+    } else {
+      // El micrófono es una fuente aparte del audio de escritorio — se piden por separado y se
+      // mezclan en una sola pista con el contexto de audio, para que MediaRecorder grabe ambas
+      // voces (el operador y el pasajero) juntas.
+      try {
+        recMicStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      } catch (err) {
+        console.error("No se pudo acceder al micrófono, sigue solo con audio del sistema:", err.message);
+        window.pulso.logIssue?.("recording-start", `sin micrófono: ${err.message}`);
+        recMicStream = null;
+      }
+
+      recAudioContext = new AudioContext();
+      const destination = recAudioContext.createMediaStreamDestination();
+      if (desktopStream.getAudioTracks().length > 0) {
+        recAudioContext.createMediaStreamSource(new MediaStream(desktopStream.getAudioTracks())).connect(destination);
+      }
+      if (recMicStream) {
+        recAudioContext.createMediaStreamSource(recMicStream).connect(destination);
+      }
+
+      recStream = new MediaStream([...desktopStream.getVideoTracks(), ...destination.stream.getAudioTracks()]);
+    }
+
     recActive = true;
     beginRecordingChunk();
   } catch (err) {
@@ -59,8 +91,11 @@ function beginRecordingChunk() {
   if (!recStream) return;
   recChunks = [];
   const bitrate = REC_QUALITY_BITRATES[recConfig.quality] || REC_QUALITY_BITRATES.medium;
+  const mimeType = recConfig.audioEnabled && MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")
+    ? "video/webm;codecs=vp8,opus"
+    : "video/webm;codecs=vp8";
   try {
-    recRecorder = new MediaRecorder(recStream, { mimeType: "video/webm;codecs=vp8", videoBitsPerSecond: bitrate });
+    recRecorder = new MediaRecorder(recStream, { mimeType, videoBitsPerSecond: bitrate });
   } catch (err) {
     console.error("No se pudo crear el grabador de video:", err.message);
     window.pulso.logIssue?.("recording-start", `MediaRecorder: ${err.message}`);
@@ -74,7 +109,7 @@ function beginRecordingChunk() {
     if (blob.size > 0) uploadRecordingChunk(blob, durationSeconds);
     if (recActive && recStream) beginRecordingChunk(); // sigue con el mismo stream, arranca el proximo pedazo
   };
-  recRecorder.start();
+  recRecorder.start(1000); // pedirle datos cada 1s — sin esto, cuando el audio viene mezclado por AudioContext, MediaRecorder no entrega nada hasta el final
   clearTimeout(recChunkTimer);
   recChunkTimer = setTimeout(() => {
     if (recRecorder && recRecorder.state === "recording") recRecorder.stop();
@@ -105,5 +140,13 @@ function stopScreenRecording() {
   if (recStream) {
     recStream.getTracks().forEach((t) => t.stop());
     recStream = null;
+  }
+  if (recMicStream) {
+    recMicStream.getTracks().forEach((t) => t.stop());
+    recMicStream = null;
+  }
+  if (recAudioContext) {
+    recAudioContext.close().catch(() => {});
+    recAudioContext = null;
   }
 }

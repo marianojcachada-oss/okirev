@@ -10,6 +10,7 @@ alter table settings add column if not exists recording_chunk_minutes integer no
 alter table settings add column if not exists recording_retention_days integer not null default 30;
 alter table settings add column if not exists recording_max_width integer not null default 1280;
 alter table settings add column if not exists recording_preset text not null default 'balanceado';
+alter table settings add column if not exists recording_audio_enabled boolean not null default false;
 
 create table if not exists screen_recordings (
   id text primary key,
