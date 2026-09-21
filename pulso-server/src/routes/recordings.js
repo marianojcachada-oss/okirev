@@ -1,7 +1,7 @@
 import express, { Router } from "express";
 import { query, newId, todayDateStr } from "../db.js";
 import { requireSession, requirePermission } from "../middleware/requireSession.js";
-import { isStorageConfigured, uploadRecording, createPlaybackUrl } from "../storage.js";
+import { isStorageConfigured, uploadRecording, createPlaybackUrl, recordingExists } from "../storage.js";
 
 const router = Router();
 
@@ -74,6 +74,20 @@ router.post("/upload", requireSession, express.raw({ type: "video/webm", limit: 
   res.json({ id, path });
 });
 
+// PUT /api/recordings/:id/thumbnail — una imagen chica en base64, mandada aparte del video
+// (el cuerpo del upload principal es binario, no deja mezclar JSON en el mismo pedido). Solo
+// puede tocar sus propias grabaciones.
+router.put("/:id/thumbnail", requireSession, async (req, res) => {
+  const { thumbnail } = req.body;
+  if (!thumbnail) return res.status(400).json({ error: "Falta la miniatura" });
+  const { rows } = await query(
+    "update screen_recordings set thumbnail = $1 where id = $2 and employee_id = $3 returning id",
+    [thumbnail, req.params.id, req.session.employeeId]
+  );
+  if (!rows[0]) return res.status(404).json({ error: "Grabación no encontrada" });
+  res.json({ ok: true });
+});
+
 // GET /api/recordings?employeeId=&date=YYYY-MM-DD — exclusivo de quien tenga permiso de
 // Grabaciones (no viene incluido en ningún rol por default).
 router.get("/", requireSession, requirePermission("grabaciones"), async (req, res) => {
@@ -92,6 +106,7 @@ router.get("/", requireSession, requirePermission("grabaciones"), async (req, re
       endedAt: r.ended_at ? new Date(r.ended_at).toISOString() : null,
       durationSeconds: r.duration_seconds,
       fileSizeBytes: r.file_size_bytes ? Number(r.file_size_bytes) : null,
+      thumbnail: r.thumbnail || null,
     }))
   );
 });
@@ -99,8 +114,19 @@ router.get("/", requireSession, requirePermission("grabaciones"), async (req, re
 // GET /api/recordings/:id/playback-url — misma exigencia de permiso. El bucket es privado, así
 // que esta es la ÚNICA forma de conseguir un link que de verdad reproduzca el video.
 router.get("/:id/playback-url", requireSession, requirePermission("grabaciones"), async (req, res) => {
+  if (!isStorageConfigured()) {
+    return res.status(503).json({ error: "El almacenamiento de grabaciones no está configurado en el servidor todavía." });
+  }
   const { rows } = await query("select storage_path from screen_recordings where id = $1", [req.params.id]);
   if (!rows[0]) return res.status(404).json({ error: "Grabación no encontrada" });
+  // El archivo puede haberse borrado directo desde el dashboard de Supabase, sin pasar por
+  // acá — en ese caso, la fila queda "huérfana". Confirmamos que el archivo sigue estando antes
+  // de ofrecer el link, y si no está, limpiamos la fila sola para que deje de aparecer listada.
+  const exists = await recordingExists(rows[0].storage_path);
+  if (!exists) {
+    await query("delete from screen_recordings where id = $1", [req.params.id]);
+    return res.status(404).json({ error: "Este video ya no está disponible (se borró del almacenamiento)." });
+  }
   const url = await createPlaybackUrl(rows[0].storage_path);
   res.json({ url });
 });

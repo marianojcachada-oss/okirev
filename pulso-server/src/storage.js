@@ -27,6 +27,18 @@ export async function uploadRecording(path, buffer, contentType) {
   if (error) throw new Error(error.message);
 }
 
+// Confirma si el archivo sigue existiendo de verdad en Storage — una URL firmada se genera
+// igual aunque el archivo ya no esté (la firma no depende de que exista), así que esta es la
+// única forma real de saberlo antes de ofrecerle el link a alguien.
+export async function recordingExists(path) {
+  const slash = path.lastIndexOf("/");
+  const folder = path.slice(0, slash);
+  const filename = path.slice(slash + 1);
+  const { data, error } = await supabase.storage.from(BUCKET).list(folder, { search: filename });
+  if (error) return false;
+  return (data || []).some((f) => f.name === filename);
+}
+
 // URL firmada para que el panel pueda REPRODUCIR un video guardado — el bucket es privado, así
 // que nadie puede verlo sin pasar primero por esta ruta (que exige permiso de "grabaciones").
 export async function createPlaybackUrl(path, expiresInSeconds = 3600) {

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage, desktopCapturer } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage, desktopCapturer, session } = require("electron");
 const path = require("path");
 const os = require("os");
 const fs = require("fs");
@@ -35,6 +35,30 @@ function createWindow() {
 
   mainWindow.setMenuBarVisibility(false);
   mainWindow.loadFile(path.join(__dirname, "renderer", "index.html"));
+
+  // Si hay una grabación en curso, el cierre normal (la X de la ventana, o "Salir" desde la
+  // bandeja, que también pasa por acá) tiraría lo que lleva grabado el pedazo actual sin subirlo.
+  // Frenamos el cierre un instante para darle tiempo al renderer de subirlo primero.
+  mainWindow.on("close", (event) => {
+    if (closeFlushDone) return; // ya se resolvió una vez, dejar pasar
+    event.preventDefault();
+    attemptGracefulClose(mainWindow);
+  });
+}
+
+let closeFlushDone = false;
+
+function attemptGracefulClose(win) {
+  win.webContents.send("app:before-close");
+  const timeout = setTimeout(() => {
+    closeFlushDone = true;
+    win.close();
+  }, 4000); // límite de seguridad, por si el renderer no responde a tiempo
+  ipcMain.once("app:close-ready", () => {
+    clearTimeout(timeout);
+    closeFlushDone = true;
+    win.close();
+  });
 }
 
 function createTray() {
@@ -119,6 +143,16 @@ function setupAutoUpdate() {
 }
 
 app.whenReady().then(() => {
+  // Sin esto, Electron bloquea los pedidos de cámara/micrófono por default — y la promesa de
+  // getUserMedia puede quedarse esperando para siempre en vez de fallar, trabando toda la
+  // grabación (incluido el video) porque el código espera ese resultado antes de seguir.
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    callback(["media", "audio", "video"].includes(permission));
+  });
+  session.defaultSession.setPermissionCheckHandler((_webContents, permission) => {
+    return ["media", "audio", "video"].includes(permission);
+  });
+
   createWindow();
   createTray();
   startBridgeServer();

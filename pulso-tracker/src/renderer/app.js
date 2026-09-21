@@ -560,6 +560,15 @@ async function init() {
     if (el) el.textContent = `OKlrev Tracker v${v}`;
   });
   setupUpdateBanner();
+
+  window.pulso.onBeforeClose(async () => {
+    try {
+      await flushRecordingBeforeClose();
+    } catch {
+      // seguimos cerrando igual — no bloquear el cierre de la app por esto
+    }
+    window.pulso.signalCloseReady();
+  });
 }
 
 document.addEventListener("DOMContentLoaded", init);

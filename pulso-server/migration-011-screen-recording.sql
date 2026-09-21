@@ -24,3 +24,4 @@ create table if not exists screen_recordings (
   created_at timestamptz not null default now()
 );
 create index if not exists idx_recordings_employee_date on screen_recordings(employee_id, started_at);
+alter table screen_recordings add column if not exists thumbnail text;

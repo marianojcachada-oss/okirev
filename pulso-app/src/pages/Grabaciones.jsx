@@ -11,6 +11,15 @@ function fmtHM(iso) {
   return new Date(iso).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
 }
 
+function fmtHMShort(iso) {
+  return new Date(iso).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
+function fmtRange(startedAt, endedAt) {
+  if (!endedAt) return `${fmtHMShort(startedAt)} — en curso`;
+  return `${fmtHMShort(startedAt)} - ${fmtHMShort(endedAt)}`;
+}
+
 function fmtSize(bytes) {
   if (!bytes) return "—";
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
@@ -35,6 +44,7 @@ export default function Grabaciones() {
       setPlaying({ url: res.url, label });
     } catch (err) {
       alert(err.message);
+      refetch(); // si ya no existe, el servidor limpió la fila sola — refrescamos para que desaparezca de la lista
     } finally {
       setLoadingId(null);
     }
@@ -77,20 +87,29 @@ export default function Grabaciones() {
               {recordings.map((r) => (
                 <div
                   key={r.id}
-                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", background: COLORS.bg, borderRadius: 8 }}
+                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", background: COLORS.bg, borderRadius: 8 }}
                 >
                   <button
                     onClick={() => play(r.id, fmtHM(r.startedAt))}
                     disabled={loadingId === r.id}
+                    title="Reproducir"
                     style={{
-                      display: "flex", alignItems: "center", justifyContent: "center", width: 30, height: 30, borderRadius: "50%",
-                      border: "none", background: COLORS.brand, color: "#fff", cursor: "pointer", flexShrink: 0,
+                      position: "relative", display: "flex", alignItems: "center", justifyContent: "center",
+                      width: 64, height: 36, borderRadius: 6, flexShrink: 0, cursor: "pointer", border: "none", padding: 0,
+                      background: r.thumbnail ? `url(${r.thumbnail}) center/cover` : COLORS.surfaceHover,
                       opacity: loadingId === r.id ? 0.6 : 1,
                     }}
                   >
-                    <Play size={14} fill="currentColor" />
+                    <span
+                      style={{
+                        display: "flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: "50%",
+                        background: "rgba(0,0,0,0.55)", color: "#fff",
+                      }}
+                    >
+                      <Play size={11} fill="currentColor" />
+                    </span>
                   </button>
-                  <span className="pulso-mono" style={{ fontSize: 13, minWidth: 74 }}>{fmtHM(r.startedAt)}</span>
+                  <span className="pulso-mono" style={{ fontSize: 13, minWidth: 110 }}>{fmtRange(r.startedAt, r.endedAt)}</span>
                   <span style={{ fontSize: 12, color: COLORS.textTertiary }}>
                     {r.durationSeconds ? formatDuration(r.durationSeconds) : "—"}
                   </span>
