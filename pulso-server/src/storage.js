@@ -18,13 +18,13 @@ export function isStorageConfigured() {
   return supabase !== null;
 }
 
-// URL firmada para que el tracker suba UN pedazo de video directo a Supabase Storage, sin
-// pasar por nuestro propio servidor — evita que Render tenga que cargar con el peso de video
-// de 56 operadores al mismo tiempo.
-export async function createUploadUrl(path) {
-  const { data, error } = await supabase.storage.from(BUCKET).createSignedUploadUrl(path);
+// Sube un pedazo de grabación directo, usando la clave de servicio — no necesita URLs firmadas
+// ni entender el formato multipart que espera Supabase para esas URLs (confirmado que ese
+// camino tiene detalles delicados: el propio SDK arma un FormData por dentro, no es un PUT
+// simple). Este método, con la clave de servicio, es mucho más directo y menos propenso a fallar.
+export async function uploadRecording(path, buffer, contentType) {
+  const { error } = await supabase.storage.from(BUCKET).upload(path, buffer, { contentType, upsert: true });
   if (error) throw new Error(error.message);
-  return data; // { signedUrl, path, token }
 }
 
 // URL firmada para que el panel pueda REPRODUCIR un video guardado — el bucket es privado, así

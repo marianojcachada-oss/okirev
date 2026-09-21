@@ -1,7 +1,7 @@
-import { Router } from "express";
+import express, { Router } from "express";
 import { query, newId, todayDateStr } from "../db.js";
 import { requireSession, requirePermission } from "../middleware/requireSession.js";
-import { isStorageConfigured, createUploadUrl, createPlaybackUrl } from "../storage.js";
+import { isStorageConfigured, uploadRecording, createPlaybackUrl } from "../storage.js";
 
 const router = Router();
 
@@ -41,37 +41,31 @@ router.put("/settings", requireSession, requirePermission("ajustes"), async (req
   res.json(mapSettings(rows[0]));
 });
 
-// POST /api/recordings/upload-url — el tracker pide un lugar donde subir el próximo pedazo de
-// su propia grabación. Siempre actúa sobre el empleado de la sesión, nunca sobre otro.
-router.post("/upload-url", requireSession, async (req, res) => {
+// POST /api/recordings/upload — el tracker manda el video de un pedazo entero en el cuerpo del
+// pedido (binario, no JSON). Un solo paso: sube a Storage y deja la fila en la base, todo junto.
+// Siempre actúa sobre el empleado de la sesión, nunca sobre otro.
+router.post("/upload", requireSession, express.raw({ type: "video/webm", limit: "50mb" }), async (req, res) => {
   if (!isStorageConfigured()) {
     return res.status(503).json({ error: "El almacenamiento de grabaciones no está configurado en el servidor todavía." });
+  }
+  if (!req.body || req.body.length === 0) {
+    return res.status(400).json({ error: "No llegó ningún video en el pedido." });
   }
   const employeeId = req.session.employeeId;
   const id = newId("rec");
   const today = todayDateStr();
   const path = `${employeeId}/${today}/${id}.webm`;
+  const durationSeconds = Number(req.query.durationSeconds) || null;
 
-  const { rows } = await query(
-    `insert into screen_recordings (id, employee_id, employee_name, started_at, storage_path)
-     values ($1, $2, $3, now(), $4) returning id`,
-    [id, employeeId, req.session.name, path]
+  await uploadRecording(path, req.body, "video/webm");
+
+  await query(
+    `insert into screen_recordings (id, employee_id, employee_name, started_at, ended_at, storage_path, file_size_bytes, duration_seconds)
+     values ($1, $2, $3, now() - ($4 || ' seconds')::interval, now(), $5, $6, $4)`,
+    [id, employeeId, req.session.name, durationSeconds || 0, path, req.body.length]
   );
 
-  const { signedUrl, token } = await createUploadUrl(path);
-  res.json({ recordingId: rows[0].id, uploadUrl: signedUrl, token, path });
-});
-
-// POST /api/recordings/:id/complete — confirma que un pedazo se subió bien y completa sus datos.
-router.post("/:id/complete", requireSession, async (req, res) => {
-  const { fileSizeBytes, durationSeconds } = req.body;
-  const { rows } = await query(
-    `update screen_recordings set ended_at = now(), file_size_bytes = $1, duration_seconds = $2
-     where id = $3 and employee_id = $4 returning id`,
-    [fileSizeBytes || null, durationSeconds || null, req.params.id, req.session.employeeId]
-  );
-  if (!rows[0]) return res.status(404).json({ error: "Grabación no encontrada" });
-  res.json({ ok: true });
+  res.json({ id, path });
 });
 
 // GET /api/recordings?employeeId=&date=YYYY-MM-DD — exclusivo de quien tenga permiso de

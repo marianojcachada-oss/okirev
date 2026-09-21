@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, Tray, Menu, nativeImage, desktopCapturer } = require("electron");
 const path = require("path");
 const os = require("os");
 const fs = require("fs");
@@ -205,6 +205,14 @@ function logSyncIssue(context, detail) {
 
 ipcMain.handle("log:issue", (_event, context, detail) => {
   logSyncIssue(context, detail);
+});
+
+// La ventana principal de la app se toma como el "id" de la pantalla completa a grabar (la
+// primera fuente de tipo "screen" — de sobra para una compu de un solo monitor, que es el caso
+// normal de un operador de despacho).
+ipcMain.handle("recording:get-source", async () => {
+  const sources = await desktopCapturer.getSources({ types: ["screen"] });
+  return sources[0]?.id || null;
 });
 
 ipcMain.handle("tracking:start", (_event, payload) => {

@@ -256,6 +256,7 @@ async function refreshBreakStatus() {
 async function endBreak() {
   await apiPost(state.config.apiUrl, "/breaks/end", {}, state.config.sessionToken);
   await ensureTracking(true); // resume activity tracking now that the break is over
+  if (!recActive) maybeStartRecording();
   await refreshBreakStatus();
 }
 
@@ -267,6 +268,7 @@ async function handleBreakToggle() {
       await endBreak();
     } else {
       await ensureTracking(false); // pause activity tracking for the duration of the break — otherwise the foreground app keeps getting logged in parallel with the break, double-counting that time
+      if (recActive) stopScreenRecording();
       await apiPost(state.config.apiUrl, "/breaks/start", {}, state.config.sessionToken);
       await refreshBreakStatus();
     }
@@ -394,6 +396,11 @@ function updateStatusFromBlocks(blocks) {
   }
 
   ensureTracking(!!open);
+  if (open && !recActive) {
+    maybeStartRecording();
+  } else if (!open && recActive) {
+    stopScreenRecording();
+  }
 }
 
 async function refreshToday(silent) {
