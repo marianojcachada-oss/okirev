@@ -12,6 +12,7 @@ let recChunkTimer = null;
 let recAudioContext = null;
 let recMicStream = null;
 let recPendingUpload = null;
+let recLastFailedAt = null;
 
 const REC_QUALITY_BITRATES = { low: 150000, medium: 350000, high: 800000 };
 
@@ -28,55 +29,78 @@ async function maybeStartRecording() {
 
 async function startScreenRecording() {
   if (recActive) return;
+  // Si venía fallando, no reintentar más de una vez por minuto — sin esto, un problema
+  // persistente en una compu puntual (como pasó acá) reintenta cada ~30s para siempre sin parar.
+  if (recLastFailedAt && Date.now() - recLastFailedAt < 60000) return;
   try {
     const sourceId = await window.pulso.getScreenSourceId();
     if (!sourceId) throw new Error("no se encontró una pantalla para grabar");
 
-    // El audio del sistema (lo que suena por la compu, incluida una llamada si el operador
-    // atiende una) viene del mismo origen de escritorio que el video — se pide junto.
-    const desktopStream = await navigator.mediaDevices.getUserMedia({
-      audio: recConfig.audioEnabled ? { mandatory: { chromeMediaSource: "desktop", chromeMediaSourceId: sourceId } } : false,
-      video: {
-        mandatory: {
-          chromeMediaSource: "desktop",
-          chromeMediaSourceId: sourceId,
-          minFrameRate: recConfig.fps,
-          maxFrameRate: recConfig.fps,
-          maxWidth: recConfig.maxWidth || 1280,
-        },
+    const videoConstraints = {
+      mandatory: {
+        chromeMediaSource: "desktop",
+        chromeMediaSourceId: sourceId,
+        minFrameRate: recConfig.fps,
+        maxFrameRate: recConfig.fps,
+        maxWidth: recConfig.maxWidth || 1280,
       },
-    });
+    };
+
+    // El video se pide siempre — es lo mínimo garantizado. El audio del sistema se intenta
+    // junto primero, pero si falla (puede pasar en compus sin un dispositivo de audio de salida
+    // activo/predeterminado) NO debe tirar abajo la grabación de video — se reintenta sin audio.
+    let desktopStream;
+    let desktopAudioOk = false;
+    if (recConfig.audioEnabled) {
+      try {
+        desktopStream = await navigator.mediaDevices.getUserMedia({
+          audio: { mandatory: { chromeMediaSource: "desktop", chromeMediaSourceId: sourceId } },
+          video: videoConstraints,
+        });
+        desktopAudioOk = desktopStream.getAudioTracks().length > 0;
+      } catch (err) {
+        console.error("No se pudo capturar el audio del sistema, sigue solo con video:", err.message);
+        window.pulso.logIssue?.("recording-start", `audio de sistema falló, sigue con video solo: ${err.message}`);
+      }
+    }
+    if (!desktopStream) {
+      desktopStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: videoConstraints });
+    }
 
     if (!recConfig.audioEnabled) {
       recStream = desktopStream;
     } else {
-      // El micrófono es una fuente aparte del audio de escritorio — se piden por separado y se
-      // mezclan en una sola pista con el contexto de audio, para que MediaRecorder grabe ambas
-      // voces (el operador y el pasajero) juntas.
+      // El micrófono es una fuente aparte del audio de escritorio — se pide por separado.
       // Limite de tiempo como red de seguridad: si por lo que sea el pedido de microfono nunca
-      // resuelve (puede pasar en Electron sin permiso configurado, o sin microfono en la compu),
-      // esto no debe trabar la grabación de video para siempre.
+      // resuelve, esto no debe trabar la grabación de video para siempre.
       try {
         recMicStream = await Promise.race([
           navigator.mediaDevices.getUserMedia({ audio: true, video: false }),
           new Promise((_, reject) => setTimeout(() => reject(new Error("tiempo de espera agotado")), 5000)),
         ]);
       } catch (err) {
-        console.error("No se pudo acceder al micrófono, sigue solo con audio del sistema:", err.message);
+        console.error("No se pudo acceder al micrófono:", err.message);
         window.pulso.logIssue?.("recording-start", `sin micrófono: ${err.message}`);
         recMicStream = null;
       }
 
-      recAudioContext = new AudioContext();
-      const destination = recAudioContext.createMediaStreamDestination();
-      if (desktopStream.getAudioTracks().length > 0) {
-        recAudioContext.createMediaStreamSource(new MediaStream(desktopStream.getAudioTracks())).connect(destination);
+      if (desktopAudioOk || recMicStream) {
+        // Al menos una fuente de audio funcionó — se mezclan en una sola pista con el contexto
+        // de audio (si son dos) o se usa la única disponible.
+        recAudioContext = new AudioContext();
+        const destination = recAudioContext.createMediaStreamDestination();
+        if (desktopAudioOk) {
+          recAudioContext.createMediaStreamSource(new MediaStream(desktopStream.getAudioTracks())).connect(destination);
+        }
+        if (recMicStream) {
+          recAudioContext.createMediaStreamSource(recMicStream).connect(destination);
+        }
+        recStream = new MediaStream([...desktopStream.getVideoTracks(), ...destination.stream.getAudioTracks()]);
+      } else {
+        // Ni el audio de sistema ni el micrófono estuvieron disponibles — sigue solo con video,
+        // en vez de perder la grabación entera por esto.
+        recStream = desktopStream;
       }
-      if (recMicStream) {
-        recAudioContext.createMediaStreamSource(recMicStream).connect(destination);
-      }
-
-      recStream = new MediaStream([...desktopStream.getVideoTracks(), ...destination.stream.getAudioTracks()]);
     }
 
     recActive = true;
@@ -84,6 +108,7 @@ async function startScreenRecording() {
   } catch (err) {
     console.error("No se pudo iniciar la grabación de pantalla:", err.message);
     window.pulso.logIssue?.("recording-start", err.message);
+    recLastFailedAt = Date.now();
   }
 }
 
