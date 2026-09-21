@@ -3,26 +3,16 @@
 // apaga al finalizarla. Comparte "state" y "apiGet" con app.js (mismo scope global, cargado
 // después en index.html).
 //
-// Si el operador tiene más de un monitor, TODAS las pantallas se combinan en un solo video —
-// se dibuja cada una en su lugar dentro de un lienzo (canvas) invisible, y se graba ese lienzo
-// como si fuera una sola pantalla. El audio (sistema + micrófono) se mezcla una sola vez.
+// Si el operador tiene más de un monitor, se graba cada uno como una sesión completamente
+// aparte, en paralelo — sin lienzo, sin elementos de video intermedios, sin composición
+// ninguna acá. Combinar todo en una sola vista es trabajo del panel al momento de REVISAR, no
+// de la compu del operador al momento de GRABAR — eso es justo lo que causaba las caídas.
+// El audio (sistema + micrófono) solo se suma a la primera pantalla, para no duplicarlo.
 
-let recActive = false;
+let recActive = false; // hay una jornada con grabación prendida, en general (no por pantalla)
 let recConfig = null;
 let recLastFailedAt = null;
-
-let recRecorder = null;
-let recChunks = [];
-let recChunkTimer = null;
-let recPendingUpload = null;
-
-let recCanvas = null;
-let recDrawInterval = null;
-let recScreenFeeds = []; // { videoEl, rawStream, cell: {x,y,w,h} }
-let recMicStream = null;
-let recAudioContext = null;
-let recCanvasStream = null;
-let recCombinedStream = null;
+let recSessions = []; // una entrada por pantalla: { screenIndex, stream, recorder, chunks, chunkTimer, pendingUpload, micStream, audioContext }
 
 const REC_QUALITY_BITRATES = { low: 150000, medium: 350000, high: 800000 };
 
@@ -37,20 +27,6 @@ async function maybeStartRecording() {
   }
 }
 
-// Calcula dónde va cada pantalla dentro del lienzo combinado — una sola pantalla ocupa todo,
-// dos van lado a lado, tres o cuatro en una grilla de 2x2.
-function computeLayout(count, cellWidth, cellHeight) {
-  const cols = count <= 1 ? 1 : 2;
-  const rows = Math.ceil(count / cols);
-  const cells = [];
-  for (let i = 0; i < count; i++) {
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-    cells.push({ x: col * cellWidth, y: row * cellHeight, w: cellWidth, h: cellHeight });
-  }
-  return { canvasWidth: cols * cellWidth, canvasHeight: rows * cellHeight, cells };
-}
-
 async function startScreenRecording() {
   if (recActive) return;
   // Si venía fallando, no reintentar más de una vez por minuto — sin esto, un problema
@@ -60,112 +36,104 @@ async function startScreenRecording() {
     const sourceIds = await window.pulso.getScreenSourceIds();
     if (!sourceIds || sourceIds.length === 0) throw new Error("no se encontró ninguna pantalla para grabar");
 
-    const cellWidth = recConfig.maxWidth || 1280;
-    const cellHeight = Math.round((cellWidth * 9) / 16); // se estira cada pantalla a este marco — simple y prolijo en la grilla
-
-    // Un stream de VIDEO por pantalla — el audio se maneja aparte, una sola vez, no por pantalla.
-    recScreenFeeds = [];
-    for (const sourceId of sourceIds) {
-      const stream = await Promise.race([
-        navigator.mediaDevices.getUserMedia({
-          audio: false,
-          video: {
-            mandatory: {
-              chromeMediaSource: "desktop",
-              chromeMediaSourceId: sourceId,
-              minFrameRate: recConfig.fps,
-              maxFrameRate: recConfig.fps,
-              maxWidth: cellWidth,
-            },
-          },
-        }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("tiempo de espera agotado capturando video")), 8000)),
-      ]);
-      const videoEl = document.createElement("video");
-      videoEl.muted = true;
-      videoEl.srcObject = stream;
-      // Limite de tiempo como red de seguridad: si por lo que sea play() nunca resuelve ni
-      // falla (mismo tipo de problema que vimos antes con el permiso de micrófono), esto no
-      // debe trabar el inicio de la grabación para siempre.
-      await Promise.race([
-        videoEl.play().catch(() => {}),
-        new Promise((resolve) => setTimeout(resolve, 3000)),
-      ]);
-      recScreenFeeds.push({ videoEl, rawStream: stream });
+    recSessions = [];
+    for (let screenIndex = 0; screenIndex < sourceIds.length; screenIndex++) {
+      const session = await startSessionForScreen(sourceIds[screenIndex], screenIndex, screenIndex === 0);
+      if (session) recSessions.push(session);
     }
-
-    const { canvasWidth, canvasHeight, cells } = computeLayout(recScreenFeeds.length, cellWidth, cellHeight);
-    recScreenFeeds.forEach((feed, i) => { feed.cell = cells[i]; });
-
-    recCanvas = document.createElement("canvas");
-    recCanvas.width = canvasWidth;
-    recCanvas.height = canvasHeight;
-    const ctx = recCanvas.getContext("2d");
-    clearInterval(recDrawInterval);
-    recDrawInterval = setInterval(() => {
-      for (const feed of recScreenFeeds) {
-        if (feed.videoEl.readyState >= 2) {
-          ctx.drawImage(feed.videoEl, feed.cell.x, feed.cell.y, feed.cell.w, feed.cell.h);
-        }
-      }
-    }, 1000 / recConfig.fps);
-
-    recCanvasStream = recCanvas.captureStream(recConfig.fps);
-
-    // El audio del sistema no depende de qué pantalla se elija — se pide una sola vez, sin
-    // importar cuál de las pantallas se use para pedirlo. Si falla (puede pasar en compus sin
-    // un dispositivo de audio de salida activo/predeterminado, o con modo exclusivo prendido)
-    // NO debe tirar abajo la grabación de video.
-    let audioTracks = [];
-    if (recConfig.audioEnabled) {
-      let desktopAudioStream = null;
-      try {
-        desktopAudioStream = await Promise.race([
-          navigator.mediaDevices.getUserMedia({
-            audio: { mandatory: { chromeMediaSource: "desktop", chromeMediaSourceId: sourceIds[0] } },
-            video: false,
-          }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("tiempo de espera agotado")), 5000)),
-        ]);
-      } catch (err) {
-        console.error("No se pudo capturar el audio del sistema, sigue solo con video:", err.message);
-        window.pulso.logIssue?.("recording-start", `audio de sistema falló, sigue con video solo: ${err.message}`);
-      }
-
-      try {
-        recMicStream = await Promise.race([
-          navigator.mediaDevices.getUserMedia({ audio: true, video: false }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("tiempo de espera agotado")), 5000)),
-        ]);
-      } catch (err) {
-        console.error("No se pudo acceder al micrófono:", err.message);
-        window.pulso.logIssue?.("recording-start", `sin micrófono: ${err.message}`);
-        recMicStream = null;
-      }
-
-      if (desktopAudioStream || recMicStream) {
-        recAudioContext = new AudioContext();
-        const destination = recAudioContext.createMediaStreamDestination();
-        if (desktopAudioStream) {
-          recAudioContext.createMediaStreamSource(desktopAudioStream).connect(destination);
-        }
-        if (recMicStream) {
-          recAudioContext.createMediaStreamSource(recMicStream).connect(destination);
-        }
-        audioTracks = destination.stream.getAudioTracks();
-      }
-    }
-
-    recCombinedStream = new MediaStream([...recCanvasStream.getVideoTracks(), ...audioTracks]);
+    if (recSessions.length === 0) throw new Error("no se pudo iniciar la captura en ninguna pantalla");
 
     recActive = true;
-    beginRecordingChunk();
+    for (const session of recSessions) beginRecordingChunk(session);
   } catch (err) {
     console.error("No se pudo iniciar la grabación de pantalla:", err.message);
     window.pulso.logIssue?.("recording-start", err.message);
     recLastFailedAt = Date.now();
-    cleanupRecordingResources();
   }
+}
+
+// Arma la sesión de UNA pantalla puntual — el audio (sistema + micrófono) solo se intenta si
+// "withAudio" es true (reservado para la primera pantalla nada más). Nada de lienzo acá: el
+// video de esta pantalla se graba tal cual viene.
+async function startSessionForScreen(sourceId, screenIndex, withAudio) {
+  const videoConstraints = {
+    mandatory: {
+      chromeMediaSource: "desktop",
+      chromeMediaSourceId: sourceId,
+      minFrameRate: recConfig.fps,
+      maxFrameRate: recConfig.fps,
+      maxWidth: recConfig.maxWidth || 1280,
+    },
+  };
+
+  // El video se pide siempre — es lo mínimo garantizado. El audio del sistema se intenta junto
+  // primero, pero si falla (puede pasar en compus sin un dispositivo de audio de salida
+  // activo/predeterminado, o con modo exclusivo prendido) NO debe tirar abajo la grabación de
+  // video — se reintenta sin audio.
+  let desktopStream;
+  let desktopAudioOk = false;
+  if (recConfig.audioEnabled && withAudio) {
+    try {
+      desktopStream = await Promise.race([
+        navigator.mediaDevices.getUserMedia({
+          audio: { mandatory: { chromeMediaSource: "desktop", chromeMediaSourceId: sourceId } },
+          video: videoConstraints,
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("tiempo de espera agotado")), 8000)),
+      ]);
+      desktopAudioOk = desktopStream.getAudioTracks().length > 0;
+    } catch (err) {
+      console.error("No se pudo capturar el audio del sistema, sigue solo con video:", err.message);
+      window.pulso.logIssue?.("recording-start", `audio de sistema falló, sigue con video solo: ${err.message}`);
+    }
+  }
+  if (!desktopStream) {
+    desktopStream = await Promise.race([
+      navigator.mediaDevices.getUserMedia({ audio: false, video: videoConstraints }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("tiempo de espera agotado capturando video")), 8000)),
+    ]);
+  }
+
+  const session = { screenIndex, chunks: [], chunkTimer: null, pendingUpload: null, micStream: null, audioContext: null };
+
+  if (!recConfig.audioEnabled || !withAudio) {
+    session.stream = desktopStream;
+    return session;
+  }
+
+  // El micrófono es una fuente aparte del audio de escritorio — se pide por separado.
+  // Límite de tiempo como red de seguridad: si por lo que sea el pedido de micrófono nunca
+  // resuelve, esto no debe trabar la grabación de video para siempre.
+  try {
+    session.micStream = await Promise.race([
+      navigator.mediaDevices.getUserMedia({ audio: true, video: false }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("tiempo de espera agotado")), 5000)),
+    ]);
+  } catch (err) {
+    console.error("No se pudo acceder al micrófono:", err.message);
+    window.pulso.logIssue?.("recording-start", `sin micrófono: ${err.message}`);
+    session.micStream = null;
+  }
+
+  if (desktopAudioOk || session.micStream) {
+    // Al menos una fuente de audio funcionó — se mezclan en una sola pista con el contexto de
+    // audio (si son dos) o se usa la única disponible.
+    session.audioContext = new AudioContext();
+    const destination = session.audioContext.createMediaStreamDestination();
+    if (desktopAudioOk) {
+      session.audioContext.createMediaStreamSource(new MediaStream(desktopStream.getAudioTracks())).connect(destination);
+    }
+    if (session.micStream) {
+      session.audioContext.createMediaStreamSource(session.micStream).connect(destination);
+    }
+    session.stream = new MediaStream([...desktopStream.getVideoTracks(), ...destination.stream.getAudioTracks()]);
+  } else {
+    // Ni el audio de sistema ni el micrófono estuvieron disponibles — sigue solo con video, en
+    // vez de perder la grabación entera por esto.
+    session.stream = desktopStream;
+  }
+
+  return session;
 }
 
 function msUntilNextChunkBoundary() {
@@ -175,26 +143,26 @@ function msUntilNextChunkBoundary() {
   return boundaryMs - (Date.now() % boundaryMs);
 }
 
-function beginRecordingChunk() {
-  if (!recCombinedStream) return;
-  recChunks = [];
+function beginRecordingChunk(session) {
+  if (!session.stream) return;
+  session.chunks = [];
   const bitrate = REC_QUALITY_BITRATES[recConfig.quality] || REC_QUALITY_BITRATES.medium;
-  const hasAudio = recCombinedStream.getAudioTracks().length > 0;
+  const hasAudio = session.stream.getAudioTracks().length > 0;
   const mimeType = hasAudio && MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")
     ? "video/webm;codecs=vp8,opus"
     : "video/webm;codecs=vp8";
   try {
-    recRecorder = new MediaRecorder(recCombinedStream, { mimeType, videoBitsPerSecond: bitrate * Math.max(1, recScreenFeeds.length) });
+    session.recorder = new MediaRecorder(session.stream, { mimeType, videoBitsPerSecond: bitrate });
   } catch (err) {
     console.error("No se pudo crear el grabador de video:", err.message);
-    window.pulso.logIssue?.("recording-start", `MediaRecorder: ${err.message}`);
+    window.pulso.logIssue?.("recording-start", `MediaRecorder (pantalla ${session.screenIndex}): ${err.message}`);
     return;
   }
   const chunkStartedAt = Date.now();
-  recRecorder.ondataavailable = (e) => { if (e.data.size > 0) recChunks.push(e.data); };
-  recRecorder.onstop = async () => {
+  session.recorder.ondataavailable = (e) => { if (e.data.size > 0) session.chunks.push(e.data); };
+  session.recorder.onstop = async () => {
     const durationMs = Date.now() - chunkStartedAt;
-    let blob = new Blob(recChunks, { type: "video/webm" });
+    let blob = new Blob(session.chunks, { type: "video/webm" });
     // MediaRecorder no guarda la duración total del archivo, así que sin este arreglo el video
     // no se puede adelantar/rebobinar al reproducirlo (ni acá ni descargado aparte).
     if (blob.size > 0 && typeof ysFixWebmDuration === "function") {
@@ -205,25 +173,28 @@ function beginRecordingChunk() {
       }
     }
     if (blob.size > 0) {
-      recPendingUpload = uploadRecordingChunk(blob, Math.round(durationMs / 1000));
+      session.pendingUpload = uploadRecordingChunk(blob, Math.round(durationMs / 1000), session.screenIndex);
     }
-    if (recActive && recCombinedStream) beginRecordingChunk(); // sigue con el mismo stream, arranca el proximo pedazo
+    if (recActive && session.stream) beginRecordingChunk(session); // sigue con el mismo stream, arranca el proximo pedazo
   };
-  recRecorder.start(1000); // pedirle datos cada 1s — sin esto, cuando el audio viene mezclado por AudioContext, MediaRecorder no entrega nada hasta el final
-  clearTimeout(recChunkTimer);
-  recChunkTimer = setTimeout(() => {
-    if (recRecorder && recRecorder.state === "recording") recRecorder.stop();
+  session.recorder.start(1000); // pedirle datos cada 1s — sin esto, cuando el audio viene mezclado por AudioContext, MediaRecorder no entrega nada hasta el final
+  clearTimeout(session.chunkTimer);
+  session.chunkTimer = setTimeout(() => {
+    if (session.recorder && session.recorder.state === "recording") session.recorder.stop();
   }, msUntilNextChunkBoundary());
 }
 
-async function uploadRecordingChunk(blob, durationSeconds) {
+async function uploadRecordingChunk(blob, durationSeconds, screenIndex) {
   try {
     const buffer = await blob.arrayBuffer();
-    const res = await fetch(`${state.config.apiUrl}/recordings/upload?durationSeconds=${durationSeconds}`, {
-      method: "POST",
-      headers: { "Content-Type": "video/webm", Authorization: `Bearer ${state.config.sessionToken}` },
-      body: buffer,
-    });
+    const res = await fetch(
+      `${state.config.apiUrl}/recordings/upload?durationSeconds=${durationSeconds}&screenIndex=${screenIndex}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "video/webm", Authorization: `Bearer ${state.config.sessionToken}` },
+        body: buffer,
+      }
+    );
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const { id } = await res.json();
     captureThumbnail(blob)
@@ -237,8 +208,8 @@ async function uploadRecordingChunk(blob, durationSeconds) {
       })
       .catch((err) => console.error("No se pudo mandar la miniatura:", err.message));
   } catch (err) {
-    console.error("No se pudo subir un pedazo de grabación:", err.message);
-    window.pulso.logIssue?.("recording-upload", err.message);
+    console.error(`No se pudo subir un pedazo de grabación (pantalla ${screenIndex}):`, err.message);
+    window.pulso.logIssue?.("recording-upload", `pantalla ${screenIndex}: ${err.message}`);
   }
 }
 
@@ -275,53 +246,53 @@ function captureThumbnail(blob) {
   });
 }
 
-function cleanupRecordingResources() {
-  clearInterval(recDrawInterval);
-  recDrawInterval = null;
-  for (const feed of recScreenFeeds) {
-    feed.videoEl.pause();
-    feed.videoEl.srcObject = null;
-    feed.rawStream.getTracks().forEach((t) => t.stop());
-  }
-  recScreenFeeds = [];
-  if (recCanvasStream) { recCanvasStream.getTracks().forEach((t) => t.stop()); recCanvasStream = null; }
-  if (recMicStream) { recMicStream.getTracks().forEach((t) => t.stop()); recMicStream = null; }
-  if (recAudioContext) { recAudioContext.close().catch(() => {}); recAudioContext = null; }
-  recCombinedStream = null;
-  recCanvas = null;
-}
-
-// Se llama cuando la app está por cerrarse (botón X, o "Salir" desde la bandeja) — corta el
-// pedazo actual y espera a que termine de subirse, para no perder lo grabado hasta ese momento.
-// No hay forma de cubrir un corte de luz o un apagado forzado de la compu — eso es inevitable
-// con cualquier software — pero un cierre normal de la app ya no debería perder nada.
-async function flushRecordingBeforeClose() {
-  if (!recActive || !recRecorder || recRecorder.state !== "recording") return;
-  recActive = false; // evita que arranque un pedazo nuevo despues de este stop
-  clearTimeout(recChunkTimer);
-
-  const previousOnStop = recRecorder.onstop;
+// Corta el pedazo actual de UNA sesión y espera a que termine de subirse. recorder.stop() es
+// asincrónico — el 'onstop' (que dispara la subida) no corre en el momento de llamarlo, así que
+// hay que esperarlo de verdad antes de seguir.
+async function flushSession(session) {
+  if (!session.recorder || session.recorder.state !== "recording") return;
+  const previousOnStop = session.recorder.onstop;
   const stopped = new Promise((resolve) => {
-    recRecorder.onstop = async (ev) => {
+    session.recorder.onstop = async (ev) => {
       await previousOnStop?.(ev); // esperar a que termine de verdad — incluye el arreglo de duración, que es asincrónico
       resolve();
     };
   });
-  recRecorder.stop();
+  session.recorder.stop();
   await stopped;
-
-  if (recPendingUpload) {
-    await recPendingUpload.catch(() => {});
+  if (session.pendingUpload) {
+    await session.pendingUpload.catch(() => {});
   }
+}
 
-  cleanupRecordingResources();
+function stopSessionTracks(session) {
+  if (session.stream) { session.stream.getTracks().forEach((t) => t.stop()); session.stream = null; }
+  if (session.micStream) { session.micStream.getTracks().forEach((t) => t.stop()); session.micStream = null; }
+  if (session.audioContext) { session.audioContext.close().catch(() => {}); session.audioContext = null; }
+}
+
+// Se llama cuando la app está por cerrarse (botón X, o "Salir" desde la bandeja) — corta el
+// pedazo actual de CADA pantalla y espera a que terminen de subirse, para no perder lo grabado
+// hasta ese momento. No hay forma de cubrir un corte de luz o un apagado forzado de la compu —
+// eso es inevitable con cualquier software — pero un cierre normal de la app ya no debería
+// perder nada.
+async function flushRecordingBeforeClose() {
+  if (!recActive || recSessions.length === 0) return;
+  recActive = false; // evita que arranque un pedazo nuevo despues de este stop
+  for (const session of recSessions) clearTimeout(session.chunkTimer);
+  await Promise.all(recSessions.map((session) => flushSession(session)));
+  for (const session of recSessions) stopSessionTracks(session);
+  recSessions = [];
 }
 
 function stopScreenRecording() {
   recActive = false;
-  clearTimeout(recChunkTimer);
-  if (recRecorder && recRecorder.state === "recording") {
-    recRecorder.stop(); // el 'onstop' sube el ultimo pedazo; como recActive ya es false, no arranca uno nuevo
+  for (const session of recSessions) {
+    clearTimeout(session.chunkTimer);
+    if (session.recorder && session.recorder.state === "recording") {
+      session.recorder.stop(); // el 'onstop' sube el ultimo pedazo; como recActive ya es false, no arranca uno nuevo
+    }
+    stopSessionTracks(session);
   }
-  cleanupRecordingResources();
+  recSessions = [];
 }

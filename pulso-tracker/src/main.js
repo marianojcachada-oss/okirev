@@ -36,6 +36,48 @@ function createWindow() {
   mainWindow.setMenuBarVisibility(false);
   mainWindow.loadFile(path.join(__dirname, "renderer", "index.html"));
 
+  // Si la ventana se cae de verdad (un crash del proceso de renderizado — puede pasar con la
+  // combinación de captura de escritorio + lienzo, sobre todo con varios monitores), ningún
+  // manejo de errores de JavaScript llega a correr, porque todo ese contexto ya murió. Esto se
+  // entera desde el proceso principal (que sí sigue vivo) y recarga la ventana sola.
+  // Si la grabación (sobre todo con varios monitores) hace caer el proceso una y otra vez, la
+  // recarga automática de abajo podría quedar en un bucle infinito — recarga, retoma la
+  // grabación (porque sigue con la jornada iniciada), vuelve a caer, recarga de nuevo. Esto
+  // corta ese bucle: si se cae demasiado seguido, se deja de recargar sola y de reintentar.
+  const CRASH_LOOP_WINDOW_MS = 30000;
+  const CRASH_LOOP_THRESHOLD = 3;
+  let recentCrashes = [];
+  function isCrashLoop() {
+    const now = Date.now();
+    recentCrashes = recentCrashes.filter((t) => now - t < CRASH_LOOP_WINDOW_MS);
+    recentCrashes.push(now);
+    return recentCrashes.length >= CRASH_LOOP_THRESHOLD;
+  }
+
+  mainWindow.webContents.on("render-process-gone", (_event, details) => {
+    logSyncIssue("render-process-gone", `reason=${details.reason} exitCode=${details.exitCode}`);
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (isCrashLoop()) {
+      logSyncIssue("render-process-gone", "bucle de caídas detectado — dejo de recargar sola, hace falta revisar a mano");
+      return;
+    }
+    mainWindow.loadFile(path.join(__dirname, "renderer", "index.html"));
+  });
+
+  // Distinto de un crash — acá el proceso sigue vivo pero dejó de responder (colgado). Si no se
+  // recupera solo en unos segundos, se recarga.
+  let unresponsiveTimeout = null;
+  mainWindow.webContents.on("unresponsive", () => {
+    logSyncIssue("render-process-unresponsive", "la ventana dejó de responder");
+    clearTimeout(unresponsiveTimeout);
+    unresponsiveTimeout = setTimeout(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.reload();
+    }, 5000);
+  });
+  mainWindow.webContents.on("responsive", () => {
+    clearTimeout(unresponsiveTimeout);
+  });
+
   // Si hay una grabación en curso, el cierre normal (la X de la ventana, o "Salir" desde la
   // bandeja, que también pasa por acá) tiraría lo que lleva grabado el pedazo actual sin subirlo.
   // Frenamos el cierre un instante para darle tiempo al renderer de subirlo primero.
