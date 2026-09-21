@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld("pulso", {
   checkForUpdatesNow: () => ipcRenderer.invoke("update:check-now"),
   logIssue: (context, detail) => ipcRenderer.invoke("log:issue", context, detail),
   getScreenSourceId: () => ipcRenderer.invoke("recording:get-source"),
+  getScreenSourceIds: () => ipcRenderer.invoke("recording:get-sources"),
   onBeforeClose: (callback) => {
     ipcRenderer.on("app:before-close", () => callback());
   },

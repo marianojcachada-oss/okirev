@@ -26,6 +26,15 @@ function fmtSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function groupByScreen(recordings) {
+  const byScreen = {};
+  for (const r of recordings) {
+    const key = r.screenIndex ?? 0;
+    (byScreen[key] ||= []).push(r);
+  }
+  return Object.entries(byScreen).sort(([a], [b]) => Number(a) - Number(b));
+}
+
 export default function Grabaciones() {
   const { data: employees } = useApi("/employees");
   const [employeeId, setEmployeeId] = useState("");
@@ -55,6 +64,9 @@ export default function Grabaciones() {
     padding: "7px 10px", color: COLORS.textPrimary, fontSize: 12.5,
   };
 
+  const screenGroups = recordings ? groupByScreen(recordings) : [];
+  const multiScreen = screenGroups.length > 1;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       <Card>
@@ -77,14 +89,17 @@ export default function Grabaciones() {
         </Card>
       ) : loading || error || !recordings ? (
         <StateMessage loading={loading} error={error} onRetry={refetch} />
-      ) : (
+      ) : recordings.length === 0 ? (
         <Card>
           <SectionHeading>Pedazos grabados</SectionHeading>
-          {recordings.length === 0 ? (
-            <p style={{ color: COLORS.textTertiary, fontSize: 13, marginTop: 8 }}>Sin grabaciones para ese día.</p>
-          ) : (
+          <p style={{ color: COLORS.textTertiary, fontSize: 13, marginTop: 8 }}>Sin grabaciones para ese día.</p>
+        </Card>
+      ) : (
+        screenGroups.map(([screenIndex, screenRecordings]) => (
+          <Card key={screenIndex}>
+            <SectionHeading>{multiScreen ? `Pantalla ${Number(screenIndex) + 1}` : "Pedazos grabados"}</SectionHeading>
             <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
-              {recordings.map((r) => (
+              {screenRecordings.map((r) => (
                 <div
                   key={r.id}
                   style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", background: COLORS.bg, borderRadius: 8 }}
@@ -117,8 +132,8 @@ export default function Grabaciones() {
                 </div>
               ))}
             </div>
-          )}
-        </Card>
+          </Card>
+        ))
       )}
 
       {playing && (

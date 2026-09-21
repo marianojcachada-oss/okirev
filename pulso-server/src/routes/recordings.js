@@ -60,15 +60,16 @@ router.post("/upload", requireSession, express.raw({ type: "video/webm", limit: 
   const employeeId = req.session.employeeId;
   const id = newId("rec");
   const today = todayDateStr();
-  const path = `${employeeId}/${today}/${id}.webm`;
+  const screenIndex = Number(req.query.screenIndex) || 0;
+  const path = `${employeeId}/${today}/screen${screenIndex}-${id}.webm`;
   const durationSeconds = Number(req.query.durationSeconds) || null;
 
   await uploadRecording(path, req.body, "video/webm");
 
   await query(
-    `insert into screen_recordings (id, employee_id, employee_name, started_at, ended_at, storage_path, file_size_bytes, duration_seconds)
-     values ($1, $2, $3, now() - ($4 || ' seconds')::interval, now(), $5, $6, $7)`,
-    [id, employeeId, req.session.name, durationSeconds || 0, path, req.body.length, durationSeconds]
+    `insert into screen_recordings (id, employee_id, employee_name, started_at, ended_at, storage_path, file_size_bytes, duration_seconds, screen_index)
+     values ($1, $2, $3, now() - ($4 || ' seconds')::interval, now(), $5, $6, $7, $8)`,
+    [id, employeeId, req.session.name, durationSeconds || 0, path, req.body.length, durationSeconds, screenIndex]
   );
 
   res.json({ id, path });
@@ -105,6 +106,7 @@ router.get("/", requireSession, requirePermission("grabaciones"), async (req, re
       startedAt: new Date(r.started_at).toISOString(),
       endedAt: r.ended_at ? new Date(r.ended_at).toISOString() : null,
       durationSeconds: r.duration_seconds,
+      screenIndex: r.screen_index,
       fileSizeBytes: r.file_size_bytes ? Number(r.file_size_bytes) : null,
       thumbnail: r.thumbnail || null,
     }))

@@ -249,6 +249,13 @@ ipcMain.handle("recording:get-source", async () => {
   return sources[0]?.id || null;
 });
 
+// TODAS las fuentes de pantalla — para operadores con más de un monitor, donde se graba cada
+// uno por separado (como hacen las herramientas de este rubro, ej. TimeBee/Insightful).
+ipcMain.handle("recording:get-sources", async () => {
+  const sources = await desktopCapturer.getSources({ types: ["screen"] });
+  return sources.map((s) => s.id);
+});
+
 ipcMain.handle("tracking:start", (_event, payload) => {
   const { apiUrl, employeeId, sessionToken, idleThresholdMinutes } = payload;
 

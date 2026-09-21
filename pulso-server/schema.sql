@@ -171,6 +171,7 @@ create table if not exists screen_recordings (
   file_size_bytes bigint,
   duration_seconds integer,
   thumbnail text, -- una imagen JPEG chica en base64, capturada por el tracker al subir el pedazo
+  screen_index integer not null default 0, -- de qué pantalla viene, para operadores con más de un monitor
   created_at timestamptz not null default now()
 );
 create index if not exists idx_recordings_employee_date on screen_recordings(employee_id, started_at);
