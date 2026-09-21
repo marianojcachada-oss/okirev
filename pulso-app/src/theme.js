@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Activity, Bell, Users, Users2, Clock, ListChecks,
-  FolderKanban, BarChart2, Settings, AlertTriangle, AlertCircle, CheckCircle2, LibraryBig,
+  FolderKanban, BarChart2, Settings, AlertTriangle, AlertCircle, CheckCircle2, LibraryBig, Video,
 } from "lucide-react";
 
 // Every value here is a CSS variable reference, not a fixed color — the ACTUAL colors live in
@@ -65,6 +65,7 @@ export const NAV_ITEMS = [
   { id: "equipos", label: "Equipos", icon: Users2, path: "/equipos" },
   { id: "asistencia", label: "Tiempo y asistencia", icon: Clock, path: "/asistencia" },
   { id: "actividades", label: "Actividades", icon: ListChecks, path: "/actividades" },
+  { id: "grabaciones", label: "Grabaciones", icon: Video, path: "/grabaciones" },
   { id: "catalogo", label: "Catálogo de apps", icon: LibraryBig, path: "/catalogo" },
   { id: "proyectos", label: "Proyectos", icon: FolderKanban, path: "/proyectos" },
   {
@@ -85,6 +86,7 @@ export const SECTION_META = {
   equipos: { title: "Equipos", subtitle: "Desempeño agrupado por equipo" },
   asistencia: { title: "Tiempo y asistencia", subtitle: "Registros de check-in y check-out del turno" },
   actividades: { title: "Actividades", subtitle: "Registro detallado de uso de aplicaciones" },
+  grabaciones: { title: "Grabaciones", subtitle: "Video de pantalla por operador y turno" },
   catalogo: { title: "Catálogo de apps", subtitle: "Clasificá cada aplicación y sitio detectado" },
   proyectos: { title: "Proyectos", subtitle: "Horas y avance por proyecto" },
   "informes-apps": { title: "Aplicaciones", subtitle: "Ranking de uso de software durante la semana" },

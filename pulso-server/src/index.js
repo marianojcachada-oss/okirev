@@ -15,8 +15,10 @@ import rolesRouter from "./routes/roles.js";
 import trackingConfigsRouter from "./routes/trackingConfigs.js";
 import breaksRouter from "./routes/breaks.js";
 import catalogRouter from "./routes/catalog.js";
+import recordingsRouter from "./routes/recordings.js";
 import { pool } from "./db.js";
 import { startAbsenceChecker } from "./absenceCheck.js";
+import { startRecordingCleanup } from "./recordingCleanup.js";
 
 const app = express();
 
@@ -45,6 +47,7 @@ app.use("/api/roles", rolesRouter);
 app.use("/api/tracking-configs", trackingConfigsRouter);
 app.use("/api/breaks", breaksRouter);
 app.use("/api/catalog", catalogRouter);
+app.use("/api/recordings", recordingsRouter);
 
 app.use((req, res) => {
   res.status(404).json({ error: `Ruta no encontrada: ${req.method} ${req.path}` });
@@ -61,4 +64,5 @@ const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`OKlrev API escuchando en http://localhost:${PORT}`);
   startAbsenceChecker();
+  startRecordingCleanup();
 });

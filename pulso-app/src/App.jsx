@@ -8,6 +8,7 @@ import Empleados from "./pages/Empleados";
 import Equipos from "./pages/Equipos";
 import Asistencia from "./pages/Asistencia";
 import Actividades from "./pages/Actividades";
+import Grabaciones from "./pages/Grabaciones";
 import Catalogo from "./pages/Catalogo";
 import Proyectos from "./pages/Proyectos";
 import InformesApps from "./pages/InformesApps";
@@ -41,6 +42,7 @@ export default function App() {
         <Route path="/equipos" element={<Equipos />} />
         <Route path="/asistencia" element={<Asistencia />} />
         <Route path="/actividades" element={<Actividades />} />
+        <Route path="/grabaciones" element={<Grabaciones />} />
         <Route path="/catalogo" element={<Catalogo />} />
         <Route path="/proyectos" element={<Proyectos />} />
         <Route path="/informes/aplicaciones" element={<InformesApps />} />

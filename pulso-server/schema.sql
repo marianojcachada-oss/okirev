@@ -138,6 +138,11 @@ create table if not exists settings (
   default_break_minutes integer not null default 15,
   prohibited_apps text[] not null default '{}',
   prohibited_apps_alerts_enabled boolean not null default false, -- apagado por default; el admin lo prende a propósito
+  recording_enabled boolean not null default false, -- apagado por default; grabación de pantalla, muy sensible
+  recording_fps integer not null default 3, -- cuadros por segundo — bajo a propósito, esto es para auditar, no para ver fluido
+  recording_quality text not null default 'medium', -- 'low' | 'medium' | 'high' -> mapea a un bitrate de video
+  recording_chunk_minutes integer not null default 5, -- cada cuanto se corta y sube un pedazo nuevo
+  recording_retention_days integer not null default 30, -- cuanto se guarda antes de borrarse solo
   desktop_token text,
   constraint settings_single_row check (id = 1)
 );
@@ -150,3 +155,18 @@ create table if not exists app_catalog (
   category text not null default 'sin_clasificar',
   first_seen_at timestamptz not null default now()
 );
+
+-- Un renglón por pedazo (chunk) de video grabado. El archivo real vive en Supabase Storage —
+-- acá solo queda la referencia (storage_path) y los metadatos, nunca el video en sí.
+create table if not exists screen_recordings (
+  id text primary key,
+  employee_id text not null references employees(id) on delete cascade,
+  employee_name text not null,
+  started_at timestamptz not null,
+  ended_at timestamptz,
+  storage_path text not null,
+  file_size_bytes bigint,
+  duration_seconds integer,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_recordings_employee_date on screen_recordings(employee_id, started_at);
