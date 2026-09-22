@@ -38,7 +38,13 @@ function groupBySlot(recordings) {
   const groups = [];
   for (const r of sorted) {
     const current = groups[groups.length - 1];
-    if (current && new Date(r.startedAt) - new Date(current[0].startedAt) <= SLOT_GROUP_TOLERANCE_MS) {
+    const screenIdx = r.screenIndex ?? 0;
+    const withinTolerance = current && new Date(r.startedAt) - new Date(current[0].startedAt) <= SLOT_GROUP_TOLERANCE_MS;
+    // Si esta pantalla YA está en el grupo actual, no puede ser la misma ronda — algo hizo que
+    // la grabación arrancara de nuevo (una recuperación automática, por ejemplo), y este pedazo
+    // es de esa segunda vuelta, no de la primera. Nunca debe repetirse una pantalla en un grupo.
+    const screenAlreadyInGroup = current && current.some((x) => (x.screenIndex ?? 0) === screenIdx);
+    if (withinTolerance && !screenAlreadyInGroup) {
       current.push(r);
     } else {
       groups.push([r]);
