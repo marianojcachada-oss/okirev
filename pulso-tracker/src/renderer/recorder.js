@@ -345,12 +345,11 @@ function stopSessionTracks(session) {
   if (session.audioContext) { session.audioContext.close().catch(() => {}); session.audioContext = null; }
 }
 
-// Se llama cuando la app está por cerrarse (botón X, o "Salir" desde la bandeja) — corta el
-// pedazo actual de CADA pantalla y espera a que terminen de subirse, para no perder lo grabado
-// hasta ese momento. No hay forma de cubrir un corte de luz o un apagado forzado de la compu —
-// eso es inevitable con cualquier software — pero un cierre normal de la app ya no debería
-// perder nada.
-async function flushRecordingBeforeClose() {
+// Corta la grabación de verdad — se usa al terminar la jornada, al marcar 10-31 (break), o al
+// cerrarse la app. Espera a que cada pantalla termine de procesar y subir su pedazo pendiente
+// ANTES de cortar el flujo de video — cortarlo en seco mientras 'onstop' todavía está
+// procesando (el arreglo de duración, armar el blob) es lo que causaba comportamiento raro.
+async function stopScreenRecording() {
   if (!recActive || recSessions.length === 0) return;
   recActive = false; // evita que arranque un pedazo nuevo despues de este stop
   clearInterval(priorityUpdateTimer);
@@ -360,15 +359,10 @@ async function flushRecordingBeforeClose() {
   recSessions = [];
 }
 
-function stopScreenRecording() {
-  recActive = false;
-  clearInterval(priorityUpdateTimer);
-  for (const session of recSessions) {
-    clearTimeout(session.chunkTimer);
-    if (session.recorder && session.recorder.state === "recording") {
-      session.recorder.stop(); // el 'onstop' sube el ultimo pedazo; como recActive ya es false, no arranca uno nuevo
-    }
-    stopSessionTracks(session);
-  }
-  recSessions = [];
+// Mismo mecanismo — nombre aparte porque se llama específicamente cuando la app está por
+// cerrarse (botón X, o "Salir" desde la bandeja), para que quede claro en ese punto del código.
+// No hay forma de cubrir un corte de luz o un apagado forzado de la compu — eso es inevitable
+// con cualquier software — pero un cierre normal de la app ya no debería perder nada.
+async function flushRecordingBeforeClose() {
+  await stopScreenRecording();
 }

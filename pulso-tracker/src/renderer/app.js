@@ -268,7 +268,7 @@ async function handleBreakToggle() {
       await endBreak();
     } else {
       await ensureTracking(false); // pause activity tracking for the duration of the break — otherwise the foreground app keeps getting logged in parallel with the break, double-counting that time
-      if (recActive) stopScreenRecording();
+      if (recActive) await stopScreenRecording();
       await apiPost(state.config.apiUrl, "/breaks/start", {}, state.config.sessionToken);
       await refreshBreakStatus();
     }
@@ -399,7 +399,7 @@ function updateStatusFromBlocks(blocks) {
   if (open && !recActive) {
     maybeStartRecording();
   } else if (!open && recActive) {
-    stopScreenRecording();
+    stopScreenRecording().catch((err) => console.error("Error al parar la grabación:", err.message));
   }
 }
 
