@@ -5,16 +5,16 @@ import { isStorageConfigured, uploadRecording, createPlaybackUrl, recordingExist
 
 const router = Router();
 
-function mapSettings(row) {
+function mapSettings(row, override) {
   return {
     enabled: row.recording_enabled,
-    fps: row.recording_fps,
-    quality: row.recording_quality,
-    chunkMinutes: row.recording_chunk_minutes,
+    fps: override?.fps ?? row.recording_fps,
+    quality: override?.quality ?? row.recording_quality,
+    chunkMinutes: override?.chunk_minutes ?? row.recording_chunk_minutes,
     retentionDays: row.recording_retention_days,
-    maxWidth: row.recording_max_width,
+    maxWidth: override?.max_width ?? row.recording_max_width,
     preset: row.recording_preset,
-    audioEnabled: row.recording_audio_enabled,
+    audioEnabled: override?.audio_enabled ?? row.recording_audio_enabled,
     prioritySite: row.recording_priority_site || null,
     priorityWidth: row.recording_priority_width,
     secondaryWidth: row.recording_secondary_width,
@@ -23,10 +23,57 @@ function mapSettings(row) {
 }
 
 // GET /api/recordings/settings — cualquier sesión válida puede leerlo (el tracker lo necesita
-// para saber si tiene que grabar y con qué configuración).
+// para saber si tiene que grabar y con qué configuración). Si ese empleado tiene una excepción
+// puntual (recording_overrides), se aplica acá — el tracker recibe todo ya combinado, sin
+// enterarse de que existe el concepto de excepción.
 router.get("/settings", requireSession, async (req, res) => {
   const { rows } = await query("select * from settings where id = 1");
-  res.json(mapSettings(rows[0]));
+  const { rows: overrideRows } = await query("select * from recording_overrides where employee_id = $1", [req.session.employeeId]);
+  res.json(mapSettings(rows[0], overrideRows[0]));
+});
+
+// GET /api/recordings/settings/employee/:employeeId — para el panel: la configuración general
+// MÁS la excepción de ese empleado en particular (si tiene), por separado, para poder mostrar
+// cuáles campos están overrideados y cuáles siguen el valor general.
+router.get("/settings/employee/:employeeId", requireSession, requirePermission("ajustes"), async (req, res) => {
+  const { rows } = await query("select * from settings where id = 1");
+  const { rows: overrideRows } = await query("select * from recording_overrides where employee_id = $1", [req.params.employeeId]);
+  const override = overrideRows[0] || null;
+  res.json({
+    general: mapSettings(rows[0]),
+    override: override
+      ? { fps: override.fps, quality: override.quality, chunkMinutes: override.chunk_minutes, maxWidth: override.max_width, audioEnabled: override.audio_enabled }
+      : null,
+  });
+});
+
+// PUT /api/recordings/settings/employee/:employeeId — fija una excepción para ESE empleado
+// nada más. Solo los campos mandados se tocan; el resto queda como estaba (o sin excepción, si
+// nunca tuvo una).
+router.put("/settings/employee/:employeeId", requireSession, requirePermission("ajustes"), async (req, res) => {
+  const { fps, quality, chunkMinutes, maxWidth, audioEnabled } = req.body;
+  await query(
+    `insert into recording_overrides (employee_id, fps, quality, chunk_minutes, max_width, audio_enabled, updated_at)
+     values ($1, $2, $3, $4, $5, $6, now())
+     on conflict (employee_id) do update set
+       fps = coalesce($2, recording_overrides.fps),
+       quality = coalesce($3, recording_overrides.quality),
+       chunk_minutes = coalesce($4, recording_overrides.chunk_minutes),
+       max_width = coalesce($5, recording_overrides.max_width),
+       audio_enabled = coalesce($6, recording_overrides.audio_enabled),
+       updated_at = now()`,
+    [req.params.employeeId, fps ?? null, quality ?? null, chunkMinutes ?? null, maxWidth ?? null, audioEnabled ?? null]
+  );
+  const { rows } = await query("select * from settings where id = 1");
+  const { rows: overrideRows } = await query("select * from recording_overrides where employee_id = $1", [req.params.employeeId]);
+  res.json(mapSettings(rows[0], overrideRows[0]));
+});
+
+// DELETE /api/recordings/settings/employee/:employeeId — saca la excepción entera, vuelve a
+// seguir la configuración general.
+router.delete("/settings/employee/:employeeId", requireSession, requirePermission("ajustes"), async (req, res) => {
+  await query("delete from recording_overrides where employee_id = $1", [req.params.employeeId]);
+  res.json({ ok: true });
 });
 
 // PUT /api/recordings/settings — solo un admin con permiso de Ajustes puede cambiar esto.

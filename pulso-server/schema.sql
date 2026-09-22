@@ -178,3 +178,17 @@ create table if not exists screen_recordings (
   created_at timestamptz not null default now()
 );
 create index if not exists idx_recordings_employee_date on screen_recordings(employee_id, started_at);
+
+-- Excepciones de grabación por operador — para cuando UNA compu puntual necesita menos calidad
+-- que el resto del equipo, sin tocar la configuración general. Todas las columnas son
+-- opcionales: null significa "no hay excepción acá, usar el valor general". Un empleado que no
+-- tiene fila acá no tiene ninguna excepción.
+create table if not exists recording_overrides (
+  employee_id text primary key references employees(id) on delete cascade,
+  fps integer,
+  quality text,
+  chunk_minutes integer,
+  max_width integer,
+  audio_enabled boolean,
+  updated_at timestamptz not null default now()
+);

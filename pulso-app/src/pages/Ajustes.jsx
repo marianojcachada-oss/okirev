@@ -628,6 +628,103 @@ function RecordingSection() {
   );
 }
 
+// Para cuando UNA compu puntual necesita menos calidad que el resto del equipo — una excepción
+// que aplica solo a ese operador, sin tocar la configuración general de arriba.
+function RecordingOverrideSection() {
+  const { data: employees } = useApi("/employees");
+  const [employeeId, setEmployeeId] = useState("");
+  const { data: overrideData, loading, refetch } = useApi(employeeId ? `/recordings/settings/employee/${employeeId}` : null);
+  const [saving, setSaving] = useState(false);
+
+  async function patchOverride(patch) {
+    setSaving(true);
+    try {
+      await api.put(`/recordings/settings/employee/${employeeId}`, patch);
+      refetch();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function clearOverride() {
+    setSaving(true);
+    try {
+      await api.del(`/recordings/settings/employee/${employeeId}`);
+      refetch();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const hasOverride = overrideData?.override && Object.values(overrideData.override).some((v) => v !== null && v !== undefined);
+  const selectStyle = {
+    background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 8,
+    padding: "7px 10px", color: COLORS.textPrimary, fontSize: 12.5, minWidth: 200,
+  };
+
+  return (
+    <Card style={{ marginTop: 18 }}>
+      <SectionHeading>Excepción de grabación por operador</SectionHeading>
+      <p style={{ fontSize: 12, color: COLORS.textTertiary, marginTop: 4, marginBottom: 14, maxWidth: 520 }}>
+        Para cuando un operador puntual se queja de que se le traba — bajale la calidad solo a él, sin
+        tocar la configuración general del resto del equipo.
+      </p>
+
+      <select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} style={{ ...selectStyle, marginBottom: 14 }}>
+        <option value="">Elegí un operador…</option>
+        {(employees || []).slice().sort((a, b) => a.name.localeCompare(b.name)).map((e) => (
+          <option key={e.id} value={e.id}>{e.name}</option>
+        ))}
+      </select>
+
+      {employeeId && loading && <p style={{ fontSize: 12.5, color: COLORS.textTertiary }}>Cargando…</p>}
+
+      {employeeId && overrideData && (
+        <>
+          {hasOverride ? (
+            <div style={{
+              display: "flex", justifyContent: "space-between", alignItems: "center", background: "rgba(108,123,255,0.1)",
+              border: `1px solid ${COLORS.brand}`, borderRadius: 8, padding: "8px 12px", marginBottom: 14, fontSize: 12.5,
+            }}>
+              <span style={{ color: COLORS.textPrimary }}>Este operador tiene una excepción activa — graba distinto al resto.</span>
+              <button
+                onClick={clearOverride} disabled={saving}
+                style={{ background: "none", border: `1px solid ${COLORS.border}`, color: COLORS.textSecondary, borderRadius: 16, padding: "5px 12px", fontSize: 12, cursor: "pointer" }}
+              >
+                Quitar excepción
+              </button>
+            </div>
+          ) : (
+            <p style={{ fontSize: 12, color: COLORS.textTertiary, marginBottom: 14 }}>
+              Sin excepción — graba igual que la configuración general.
+            </p>
+          )}
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {[
+              { id: "ahorro", label: "Ahorro de almacenamiento" },
+              { id: "balanceado", label: "Balanceado" },
+              { id: "alta_calidad", label: "Alta calidad" },
+            ].map((p) => (
+              <button
+                key={p.id}
+                onClick={() => patchOverride(RECORDING_PRESETS[p.id])}
+                disabled={saving}
+                style={{
+                  padding: "7px 14px", borderRadius: 20, fontSize: 12.5, cursor: "pointer",
+                  border: `1px solid ${COLORS.border}`, background: "transparent", color: COLORS.textSecondary,
+                }}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </Card>
+  );
+}
+
 function SuperAdminSection() {
   const [disconnecting, setDisconnecting] = useState(false);
   const [resetting, setResetting] = useState(false);
@@ -760,6 +857,7 @@ export default function Ajustes() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18, maxWidth: 640 }}>
       <RecordingSection />
+      <RecordingOverrideSection />
       {user?.isSuperAdmin && <SuperAdminSection />}
       <ThemeSection />
       <Card>
