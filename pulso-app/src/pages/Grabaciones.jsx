@@ -62,6 +62,8 @@ export default function Grabaciones() {
   const [playingSlot, setPlayingSlot] = useState(null); // [{ id, screenIndex, url }, ...]
   const [loadingSlotKey, setLoadingSlotKey] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [progress, setProgress] = useState(0); // segundos, según el video de referencia (pantalla 1)
+  const [duration, setDuration] = useState(0);
   const videoRefs = useRef([]);
 
   const { data: recordings, loading, error, refetch } = useApi(
@@ -75,18 +77,27 @@ export default function Grabaciones() {
     const slotKey = `${slotGroup[0].startedAt}|${slotGroup[0].endedAt}`;
     setLoadingSlotKey(slotKey);
     try {
-      const withUrls = await Promise.all(
+      const results = await Promise.allSettled(
         slotGroup.map(async (r) => {
           const res = await api.get(`/recordings/${r.id}/playback-url`);
           return { ...r, url: res.url };
         })
       );
+      const withUrls = results.filter((res) => res.status === "fulfilled").map((res) => res.value);
+      const failed = results.filter((res) => res.status === "rejected");
+      if (failed.length > 0) {
+        console.error(`No se pudo traer el video de ${failed.length} de ${slotGroup.length} pantallas:`, failed.map((f) => f.reason?.message));
+      }
+      if (withUrls.length === 0) {
+        alert("No se pudo traer ninguno de los videos de esta franja.");
+        refetch();
+        return;
+      }
       videoRefs.current = [];
+      setProgress(0);
+      setDuration(0);
       setPlayingSlot(withUrls);
       setIsPlaying(true);
-    } catch (err) {
-      alert(err.message);
-      refetch(); // si alguna ya no existe, el servidor limpió esa fila sola — refrescamos la lista
     } finally {
       setLoadingSlotKey(null);
     }
@@ -103,6 +114,15 @@ export default function Grabaciones() {
   function restartAll() {
     videoRefs.current.forEach((v) => { if (v) v.currentTime = 0; });
     playAll();
+  }
+  function seekAll(seconds) {
+    videoRefs.current.forEach((v) => { if (v) v.currentTime = seconds; });
+    setProgress(seconds);
+  }
+  function fmtTime(seconds) {
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${String(s).padStart(2, "0")}`;
   }
 
   const selectStyle = {
@@ -229,7 +249,7 @@ export default function Grabaciones() {
               </button>
             </div>
 
-            <div style={{ display: "grid", gap: 8, ...gridStyle(playingSlot.length), maxWidth: "85vw", maxHeight: "65vh" }}>
+            <div style={{ display: "grid", gap: 8, ...gridStyle(playingSlot.length), maxWidth: "85vw", maxHeight: "60vh" }}>
               {playingSlot.map((r, i) => (
                 <div key={r.id} style={{ position: "relative" }}>
                   {playingSlot.length > 1 && (
@@ -246,35 +266,49 @@ export default function Grabaciones() {
                     autoPlay
                     muted={i > 0}
                     onEnded={() => setIsPlaying(false)}
+                    onLoadedMetadata={i === 0 ? (e) => setDuration(e.target.duration || 0) : undefined}
+                    onTimeUpdate={i === 0 ? (e) => setProgress(e.target.currentTime) : undefined}
                     style={{ width: "100%", height: "100%", borderRadius: 8, display: "block", background: "#000" }}
                   />
                 </div>
               ))}
             </div>
 
-            {playingSlot.length > 1 && (
-              <div style={{ display: "flex", justifyContent: "center", gap: 10, marginTop: 12 }}>
-                <button
-                  onClick={() => (isPlaying ? pauseAll() : playAll())}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 6, background: COLORS.brand, color: "#fff", border: "none",
-                    borderRadius: 20, padding: "7px 16px", fontSize: 12.5, cursor: "pointer",
-                  }}
-                >
-                  {isPlaying ? <Pause size={13} fill="currentColor" /> : <Play size={13} fill="currentColor" />}
-                  {isPlaying ? "Pausar todas" : "Reproducir todas"}
-                </button>
-                <button
-                  onClick={restartAll}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 6, background: "transparent", color: COLORS.textSecondary,
-                    border: `1px solid ${COLORS.border}`, borderRadius: 20, padding: "7px 16px", fontSize: 12.5, cursor: "pointer",
-                  }}
-                >
-                  <RotateCcw size={13} /> Reiniciar sincronía
-                </button>
-              </div>
-            )}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+              <span className="pulso-mono" style={{ fontSize: 11, color: COLORS.textTertiary, minWidth: 34 }}>{fmtTime(progress)}</span>
+              <input
+                type="range"
+                min={0}
+                max={duration || 0}
+                step={0.1}
+                value={progress}
+                onChange={(e) => seekAll(Number(e.target.value))}
+                style={{ flex: 1, accentColor: COLORS.brand }}
+              />
+              <span className="pulso-mono" style={{ fontSize: 11, color: COLORS.textTertiary, minWidth: 34 }}>{fmtTime(duration)}</span>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "center", gap: 10, marginTop: 10 }}>
+              <button
+                onClick={() => (isPlaying ? pauseAll() : playAll())}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6, background: COLORS.brand, color: "#fff", border: "none",
+                  borderRadius: 20, padding: "7px 16px", fontSize: 12.5, cursor: "pointer",
+                }}
+              >
+                {isPlaying ? <Pause size={13} fill="currentColor" /> : <Play size={13} fill="currentColor" />}
+                {isPlaying ? "Pausar" : "Reproducir"}{playingSlot.length > 1 ? " todas" : ""}
+              </button>
+              <button
+                onClick={restartAll}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6, background: "transparent", color: COLORS.textSecondary,
+                  border: `1px solid ${COLORS.border}`, borderRadius: 20, padding: "7px 16px", fontSize: 12.5, cursor: "pointer",
+                }}
+              >
+                <RotateCcw size={13} /> Reiniciar{playingSlot.length > 1 ? " sincronía" : ""}
+              </button>
+            </div>
           </div>
         </div>
       )}
