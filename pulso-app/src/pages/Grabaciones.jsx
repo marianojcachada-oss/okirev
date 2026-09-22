@@ -24,16 +24,27 @@ function fmtSize(bytes) {
 
 // Agrupa por momento (inicio+fin) en vez de por pantalla — cada franja de tiempo junta las
 // grabaciones de todas las pantallas de ese operador en ese rango, para poder reproducirlas
-// juntas y sincronizadas (combinar recién al momento de VER, no de grabar).
+// Agrupa por momento en vez de por pantalla — cada franja de tiempo junta las grabaciones de
+// todas las pantallas de ese operador en ese rango, para poder reproducirlas juntas y
+// sincronizadas (combinar recién al momento de VER, no de grabar). Cada pantalla sube su pedazo
+// en un instante levemente distinto (red, tiempo de codificación) — por eso se agrupa por
+// cercanía real en el tiempo (un margen bien por debajo de la duración de un pedazo, que suele
+// ser de varios minutos), no por una grilla fija de minutos, que falla justo en el límite entre
+// un minuto y el siguiente.
+const SLOT_GROUP_TOLERANCE_MS = 90 * 1000;
+
 function groupBySlot(recordings) {
-  const bySlot = {};
-  for (const r of recordings) {
-    const key = `${r.startedAt}|${r.endedAt || "curso"}`;
-    (bySlot[key] ||= []).push(r);
+  const sorted = [...recordings].sort((a, b) => new Date(a.startedAt) - new Date(b.startedAt));
+  const groups = [];
+  for (const r of sorted) {
+    const current = groups[groups.length - 1];
+    if (current && new Date(r.startedAt) - new Date(current[0].startedAt) <= SLOT_GROUP_TOLERANCE_MS) {
+      current.push(r);
+    } else {
+      groups.push([r]);
+    }
   }
-  return Object.values(bySlot)
-    .map((group) => group.sort((a, b) => (a.screenIndex ?? 0) - (b.screenIndex ?? 0)))
-    .sort((a, b) => new Date(a[0].startedAt) - new Date(b[0].startedAt));
+  return groups.map((group) => group.sort((a, b) => (a.screenIndex ?? 0) - (b.screenIndex ?? 0)));
 }
 
 // Layout pedido: 1 pantalla → completa, 2 → lado a lado, 3 → tres columnas, 4 → grilla 2x2.
@@ -138,7 +149,6 @@ export default function Grabaciones() {
             {slots.map((slotGroup) => {
               const first = slotGroup[0];
               const slotKey = `${first.startedAt}|${first.endedAt}`;
-              const thumb = slotGroup.find((r) => r.thumbnail)?.thumbnail;
               return (
                 <div
                   key={slotKey}
@@ -149,16 +159,33 @@ export default function Grabaciones() {
                     disabled={loadingSlotKey === slotKey}
                     title="Reproducir"
                     style={{
-                      position: "relative", display: "flex", alignItems: "center", justifyContent: "center",
-                      width: 64, height: 36, borderRadius: 6, flexShrink: 0, cursor: "pointer", border: "none", padding: 0,
-                      background: thumb ? `url(${thumb}) center/cover` : COLORS.surfaceHover,
+                      position: "relative", display: "flex", gap: 3, flexShrink: 0, cursor: "pointer", border: "none", padding: 0, background: "none",
                       opacity: loadingSlotKey === slotKey ? 0.6 : 1,
                     }}
                   >
+                    {slotGroup.map((r) => (
+                      <span
+                        key={r.id}
+                        style={{
+                          position: "relative", width: slotGroup.length > 1 ? 40 : 64, height: 36, borderRadius: 6, overflow: "hidden",
+                          background: r.thumbnail ? `url(${r.thumbnail}) center/cover` : COLORS.surfaceHover, flexShrink: 0,
+                        }}
+                      >
+                        {slotGroup.length > 1 && (
+                          <span style={{
+                            position: "absolute", bottom: 1, left: 2, fontSize: 9, color: "#fff",
+                            textShadow: "0 0 3px rgba(0,0,0,0.9)", fontWeight: 600,
+                          }}>
+                            {(r.screenIndex ?? 0) + 1}
+                          </span>
+                        )}
+                      </span>
+                    ))}
                     <span
                       style={{
+                        position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
                         display: "flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: "50%",
-                        background: "rgba(0,0,0,0.55)", color: "#fff",
+                        background: "rgba(0,0,0,0.55)", color: "#fff", pointerEvents: "none",
                       }}
                     >
                       <Play size={11} fill="currentColor" />
