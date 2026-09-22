@@ -13,6 +13,8 @@ let recActive = false; // hay una jornada con grabación prendida, en general (n
 let recConfig = null;
 let recLastFailedAt = null;
 let recSessions = []; // una entrada por pantalla: { screenIndex, stream, recorder, chunks, chunkTimer, pendingUpload, micStream, audioContext }
+let currentPriorityScreenIndex = null; // qué pantalla tuvo más tiempo el sitio priorizado — null si no hay sitio configurado o sin datos todavía
+let priorityUpdateTimer = null;
 
 const REC_QUALITY_BITRATES = { low: 150000, medium: 350000, high: 800000 };
 
@@ -44,6 +46,25 @@ async function startScreenRecording() {
     if (recSessions.length === 0) throw new Error("no se pudo iniciar la captura en ninguna pantalla");
 
     recActive = true;
+
+    // "Priorizar calidad según sitio" — si hay uno configurado, se le avisa al tracker (que ya
+    // sondea la ventana en primer plano) para que empiece a acumular en qué pantalla estuvo. Se
+    // lee y decide "quién ganó" alineado a los mismos límites de pedazo (cada N minutos), no al
+    // instante — MediaRecorder no permite cambiar la calidad a mitad de una grabación en curso.
+    clearInterval(priorityUpdateTimer);
+    currentPriorityScreenIndex = null;
+    if (recConfig.prioritySite) {
+      await window.pulso.setPrioritySite?.(recConfig.prioritySite);
+      const boundaryMs = (recConfig.chunkMinutes || 5) * 60 * 1000;
+      const updateLeader = async () => { currentPriorityScreenIndex = await window.pulso.getPriorityScreen?.(); };
+      setTimeout(() => {
+        updateLeader();
+        priorityUpdateTimer = setInterval(updateLeader, boundaryMs);
+      }, msUntilNextChunkBoundary());
+    } else {
+      await window.pulso.setPrioritySite?.(null);
+    }
+
     for (const session of recSessions) beginRecordingChunk(session);
   } catch (err) {
     console.error("No se pudo iniciar la grabación de pantalla:", err.message);
@@ -146,7 +167,13 @@ function msUntilNextChunkBoundary() {
 function beginRecordingChunk(session) {
   if (!session.stream) return;
   session.chunks = [];
-  const bitrate = REC_QUALITY_BITRATES[recConfig.quality] || REC_QUALITY_BITRATES.medium;
+  let bitrate = REC_QUALITY_BITRATES[recConfig.quality] || REC_QUALITY_BITRATES.medium;
+  // Si hay un sitio priorizado y ya sabemos qué pantalla ganó la ronda anterior: esa pantalla
+  // graba con más calidad, las demás con menos — sin este dato (recién arrancando, o sin sitio
+  // configurado), todas graban igual, como siempre.
+  if (recConfig.prioritySite && currentPriorityScreenIndex !== null) {
+    bitrate = session.screenIndex === currentPriorityScreenIndex ? Math.round(bitrate * 1.5) : Math.round(bitrate * 0.6);
+  }
   const hasAudio = session.stream.getAudioTracks().length > 0;
   const mimeType = hasAudio && MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")
     ? "video/webm;codecs=vp8,opus"
@@ -279,6 +306,7 @@ function stopSessionTracks(session) {
 async function flushRecordingBeforeClose() {
   if (!recActive || recSessions.length === 0) return;
   recActive = false; // evita que arranque un pedazo nuevo despues de este stop
+  clearInterval(priorityUpdateTimer);
   for (const session of recSessions) clearTimeout(session.chunkTimer);
   await Promise.all(recSessions.map((session) => flushSession(session)));
   for (const session of recSessions) stopSessionTracks(session);
@@ -287,6 +315,7 @@ async function flushRecordingBeforeClose() {
 
 function stopScreenRecording() {
   recActive = false;
+  clearInterval(priorityUpdateTimer);
   for (const session of recSessions) {
     clearTimeout(session.chunkTimer);
     if (session.recorder && session.recorder.state === "recording") {

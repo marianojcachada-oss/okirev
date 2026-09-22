@@ -1,4 +1,4 @@
-const { powerMonitor } = require("electron");
+const { powerMonitor, screen } = require("electron");
 const { execFile } = require("child_process");
 const { promisify } = require("util");
 const fs = require("fs");
@@ -110,6 +110,8 @@ public class PulsoWin32 {
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
 }
 '@
 $hwnd = [PulsoWin32]::GetForegroundWindow()
@@ -118,7 +120,9 @@ $sb = New-Object System.Text.StringBuilder 512
 $procId = 0
 [PulsoWin32]::GetWindowThreadProcessId($hwnd, [ref]$procId) | Out-Null
 try { $name = (Get-Process -Id $procId -ErrorAction Stop).ProcessName } catch { $name = "desconocido" }
-Write-Output "$name|$($sb.ToString())"
+$rect = New-Object PulsoWin32+RECT
+[PulsoWin32]::GetWindowRect($hwnd, [ref]$rect) | Out-Null
+Write-Output "$name|$($sb.ToString())|$($rect.Left)|$($rect.Top)|$($rect.Right)|$($rect.Bottom)"
 `;
 
 let scriptPath = null;
@@ -133,7 +137,7 @@ function ensureScriptFile() {
 
 async function getForegroundWindow() {
   if (process.platform !== "win32") {
-    return { app: "No soportado en esta plataforma", title: "" };
+    return { app: "No soportado en esta plataforma", title: "", bounds: null };
   }
   try {
     const script = ensureScriptFile();
@@ -142,11 +146,20 @@ async function getForegroundWindow() {
       ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script],
       { timeout: 5000, windowsHide: true, encoding: "utf8" }
     );
-    const [procName, ...titleParts] = stdout.trim().split("|");
-    return { app: procName || "Desconocido", title: titleParts.join("|").trim() };
+    // El título puede traer "|" de por sí (nombres de chat, documentos) — por eso se sacan los
+    // últimos 4 campos (el rectángulo) desde el final, y todo lo del medio es el título.
+    const parts = stdout.trim().split("|");
+    const procName = parts[0];
+    const bottom = Number(parts.pop());
+    const right = Number(parts.pop());
+    const top = Number(parts.pop());
+    const left = Number(parts.pop());
+    const title = parts.slice(1).join("|").trim();
+    const bounds = [left, top, right, bottom].every(Number.isFinite) ? { left, top, right, bottom } : null;
+    return { app: procName || "Desconocido", title, bounds };
   } catch (err) {
     console.error("getForegroundWindow falló:", err.message);
-    return { app: "Desconocido", title: "" };
+    return { app: "Desconocido", title: "", bounds: null };
   }
 }
 
@@ -155,6 +168,44 @@ let currentSegment = null; // { label, category, startedAt }
 let idleThresholdSeconds = 300;
 let onFlush = null; // (record) => void
 let onStatusChange = null; // ({status, app}) => void
+
+// Para "priorizar calidad de grabación según qué monitor tiene tal sitio abierto" — se
+// acumula, pantalla por pantalla, cuánto tiempo estuvo ese sitio en primer plano ahí, usando el
+// mismo sondeo de cada 10s que ya corre para el registro de actividad (no se agrega ningún
+// pedido nuevo a Windows). Se lee y se reinicia al arrancar cada pedazo nuevo de grabación.
+let prioritySiteHostname = null;
+let priorityTallyMs = {}; // { screenIndex: ms acumulados }
+
+function setPrioritySite(hostname) {
+  prioritySiteHostname = hostname || null;
+  priorityTallyMs = {};
+}
+
+// A qué pantalla corresponde un rectángulo de ventana — usa la API de Electron hecha para esto
+// (la que tiene más superposición con el rectángulo dado), y su posición dentro de la lista de
+// monitores como índice. Asume que ese orden coincide con el de desktopCapturer.getSources()
+// (con el que se arma la grabación) — es el mejor mapeo posible sin un identificador común
+// entre ambas listas, y coincide en el caso normal.
+function displayIndexForBounds(bounds) {
+  if (!bounds) return null;
+  try {
+    const rect = { x: bounds.left, y: bounds.top, width: bounds.right - bounds.left, height: bounds.bottom - bounds.top };
+    const match = screen.getDisplayMatching(rect);
+    const all = screen.getAllDisplays();
+    const idx = all.findIndex((d) => d.id === match.id);
+    return idx >= 0 ? idx : null;
+  } catch {
+    return null;
+  }
+}
+
+function getAndResetPriorityLeader() {
+  const entries = Object.entries(priorityTallyMs);
+  priorityTallyMs = {};
+  if (entries.length === 0) return null;
+  entries.sort((a, b) => b[1] - a[1]);
+  return Number(entries[0][0]);
+}
 
 // Window titles carry a lot of dynamic, per-moment noise (chat counts, document names,
 // email subjects, meeting names) that would otherwise blow up the app catalog into one
@@ -191,16 +242,28 @@ async function tick() {
     try {
       const win = await getForegroundWindow();
       const isBrowser = BROWSER_PROCESSES.some((p) => win.app.toLowerCase().includes(p));
+      let detectedHostname = null;
       if (isBrowser) {
         const tab = getCurrentBrowserTab(); // extensión del navegador, si está instalada — da la URL real
         if (tab) {
           label = browserActivityLabel(win.app, tab.hostname);
+          detectedHostname = tab.hostname;
         } else {
           const knownSite = matchKnownSite(win.title);
           label = knownSite ? browserTitleLabel(win.app, knownSite.name, knownSite.hostname) : win.app;
+          detectedHostname = knownSite?.hostname || null;
         }
       } else {
         label = win.app;
+      }
+
+      // Si el sitio detectado ahora es el que se está priorizando, sumar este sondeo (10s) a la
+      // pantalla donde está esa ventana.
+      if (prioritySiteHostname && detectedHostname === prioritySiteHostname) {
+        const screenIdx = displayIndexForBounds(win.bounds);
+        if (screenIdx !== null) {
+          priorityTallyMs[screenIdx] = (priorityTallyMs[screenIdx] || 0) + POLL_MS;
+        }
       }
     } catch {
       label = "Desconocido";
@@ -257,4 +320,4 @@ function isRunning() {
   return pollInterval !== null;
 }
 
-module.exports = { start, stop, updateSettings, isRunning };
+module.exports = { start, stop, updateSettings, isRunning, setPrioritySite, getAndResetPriorityLeader };

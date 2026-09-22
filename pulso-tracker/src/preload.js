@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld("pulso", {
   logIssue: (context, detail) => ipcRenderer.invoke("log:issue", context, detail),
   getScreenSourceId: () => ipcRenderer.invoke("recording:get-source"),
   getScreenSourceIds: () => ipcRenderer.invoke("recording:get-sources"),
+  setPrioritySite: (hostname) => ipcRenderer.invoke("recording:set-priority-site", hostname),
+  getPriorityScreen: () => ipcRenderer.invoke("recording:get-priority-screen"),
   onBeforeClose: (callback) => {
     ipcRenderer.on("app:before-close", () => callback());
   },

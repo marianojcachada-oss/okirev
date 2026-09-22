@@ -7,6 +7,20 @@ import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../auth/AuthContext";
 import { Card, SectionHeading, StateMessage, Modal } from "../components/ui";
 
+// Mismos sitios que el tracker ya reconoce para el registro de actividad (tracker.js,
+// TITLE_SITE_PATTERNS) — los hostnames tienen que coincidir exactamente, porque son los que el
+// tracker compara para decidir en qué pantalla estuvo cada uno.
+const KNOWN_PRIORITY_SITES = [
+  { name: "Taxi caller", hostname: "app.taxicaller.net" },
+  { name: "Microsoft Teams", hostname: "teams.microsoft.com" },
+  { name: "Outlook", hostname: "outlook.office.com" },
+  { name: "Gmail", hostname: "mail.google.com" },
+  { name: "RingCentral", hostname: "app.ringcentral.com" },
+  { name: "Salesforce", hostname: "salesforce.com" },
+  { name: "Zendesk", hostname: "zendesk.com" },
+  { name: "Slack", hostname: "slack.com" },
+];
+
 const PERMISSION_PAGES = NAV_ITEMS.flatMap((item) =>
   item.children ? item.children.map((c) => ({ id: c.id, label: c.label })) : [{ id: item.id, label: item.label }]
 );
@@ -478,6 +492,31 @@ function RecordingSection() {
         >
           <span style={knobStyle(recSettings.audioEnabled)} />
         </button>
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, paddingTop: 14, borderTop: `1px solid ${COLORS.border}` }}>
+        <div style={{ maxWidth: 420 }}>
+          <div style={{ fontSize: 13, color: COLORS.textPrimary }}>Priorizar calidad según sitio</div>
+          <div style={{ fontSize: 11.5, color: COLORS.textTertiary, marginTop: 2 }}>
+            Si el operador tiene más de un monitor, la pantalla donde esté este sitio en primer plano graba con más
+            calidad que el resto. El cambio se aplica recién al arrancar el próximo pedazo (cada tantos minutos como
+            tengas configurado), no al instante.
+          </div>
+        </div>
+        <select
+          value={recSettings.prioritySite || ""}
+          onChange={(e) => patchRecordingSettings({ prioritySite: e.target.value || null })}
+          disabled={saving}
+          style={{
+            background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 8,
+            padding: "7px 10px", color: COLORS.textPrimary, fontSize: 12.5, minWidth: 180,
+          }}
+        >
+          <option value="">Ninguno</option>
+          {KNOWN_PRIORITY_SITES.map((s) => (
+            <option key={s.hostname} value={s.hostname}>{s.name}</option>
+          ))}
+        </select>
       </div>
 
       <div style={{ marginBottom: 16 }}>

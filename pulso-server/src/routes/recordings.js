@@ -15,6 +15,7 @@ function mapSettings(row) {
     maxWidth: row.recording_max_width,
     preset: row.recording_preset,
     audioEnabled: row.recording_audio_enabled,
+    prioritySite: row.recording_priority_site || null,
     storageConfigured: isStorageConfigured(),
   };
 }
@@ -28,7 +29,7 @@ router.get("/settings", requireSession, async (req, res) => {
 
 // PUT /api/recordings/settings — solo un admin con permiso de Ajustes puede cambiar esto.
 router.put("/settings", requireSession, requirePermission("ajustes"), async (req, res) => {
-  const { enabled, fps, quality, chunkMinutes, retentionDays, maxWidth, preset, audioEnabled } = req.body;
+  const { enabled, fps, quality, chunkMinutes, retentionDays, maxWidth, preset, audioEnabled, prioritySite } = req.body;
   const fields = [];
   const values = [];
   let i = 1;
@@ -40,6 +41,7 @@ router.put("/settings", requireSession, requirePermission("ajustes"), async (req
   if (maxWidth !== undefined) { fields.push(`recording_max_width = $${i++}`); values.push(Number(maxWidth)); }
   if (preset !== undefined) { fields.push(`recording_preset = $${i++}`); values.push(preset); }
   if (audioEnabled !== undefined) { fields.push(`recording_audio_enabled = $${i++}`); values.push(!!audioEnabled); }
+  if (prioritySite !== undefined) { fields.push(`recording_priority_site = $${i++}`); values.push(prioritySite || null); }
   if (fields.length > 0) {
     await query(`update settings set ${fields.join(", ")} where id = 1`, values);
   }

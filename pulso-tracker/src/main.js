@@ -298,6 +298,16 @@ ipcMain.handle("recording:get-sources", async () => {
   return sources.map((s) => s.id);
 });
 
+// "Priorizar calidad según sitio" — el tracker (a través de tracker.js, que ya sondea la
+// ventana en primer plano cada 10s) va sumando en qué pantalla estuvo ese sitio. Esto expone
+// esa cuenta al renderer, que la usa para decidir la calidad del próximo pedazo.
+ipcMain.handle("recording:set-priority-site", (_event, hostname) => {
+  tracker.setPrioritySite(hostname);
+});
+ipcMain.handle("recording:get-priority-screen", () => {
+  return tracker.getAndResetPriorityLeader();
+});
+
 ipcMain.handle("tracking:start", (_event, payload) => {
   const { apiUrl, employeeId, sessionToken, idleThresholdMinutes } = payload;
 
