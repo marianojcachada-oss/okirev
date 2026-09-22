@@ -494,29 +494,59 @@ function RecordingSection() {
         </button>
       </div>
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, paddingTop: 14, borderTop: `1px solid ${COLORS.border}` }}>
-        <div style={{ maxWidth: 420 }}>
-          <div style={{ fontSize: 13, color: COLORS.textPrimary }}>Priorizar calidad según sitio</div>
-          <div style={{ fontSize: 11.5, color: COLORS.textTertiary, marginTop: 2 }}>
-            Si el operador tiene más de un monitor, la pantalla donde esté este sitio en primer plano graba con más
-            calidad que el resto. El cambio se aplica recién al arrancar el próximo pedazo (cada tantos minutos como
-            tengas configurado), no al instante.
+      <div style={{ paddingTop: 14, borderTop: `1px solid ${COLORS.border}`, marginBottom: 18 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ maxWidth: 420 }}>
+            <div style={{ fontSize: 13, color: COLORS.textPrimary }}>Priorizar calidad según sitio</div>
+            <div style={{ fontSize: 11.5, color: COLORS.textTertiary, marginTop: 2 }}>
+              Si el operador tiene más de un monitor, la pantalla donde esté este sitio en primer plano graba a la
+              resolución "prioritaria"; el resto, a la "secundaria". El cambio se aplica recién al arrancar el
+              próximo pedazo (cada tantos minutos como tengas configurado), no al instante.
+            </div>
           </div>
+          <select
+            value={recSettings.prioritySite || ""}
+            onChange={(e) => patchRecordingSettings({ prioritySite: e.target.value || null })}
+            disabled={saving}
+            style={{
+              background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 8,
+              padding: "7px 10px", color: COLORS.textPrimary, fontSize: 12.5, minWidth: 180,
+            }}
+          >
+            <option value="">Ninguno</option>
+            {KNOWN_PRIORITY_SITES.map((s) => (
+              <option key={s.hostname} value={s.hostname}>{s.name}</option>
+            ))}
+          </select>
         </div>
-        <select
-          value={recSettings.prioritySite || ""}
-          onChange={(e) => patchRecordingSettings({ prioritySite: e.target.value || null })}
-          disabled={saving}
-          style={{
-            background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 8,
-            padding: "7px 10px", color: COLORS.textPrimary, fontSize: 12.5, minWidth: 180,
-          }}
-        >
-          <option value="">Ninguno</option>
-          {KNOWN_PRIORITY_SITES.map((s) => (
-            <option key={s.hostname} value={s.hostname}>{s.name}</option>
-          ))}
-        </select>
+        {recSettings.prioritySite && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 14 }}>
+            <div>
+              <label style={fieldLabelStyle}>Resolución prioritaria (donde esté el sitio)</label>
+              <select
+                style={selectStyle} disabled={saving}
+                value={recSettings.priorityWidth || 1280}
+                onChange={(e) => patchRecordingSettings({ priorityWidth: Number(e.target.value) })}
+              >
+                <option value={960}>960px</option>
+                <option value={1280}>1280px</option>
+                <option value={1920}>1920px</option>
+              </select>
+            </div>
+            <div>
+              <label style={fieldLabelStyle}>Resolución secundaria (el resto de las pantallas)</label>
+              <select
+                style={selectStyle} disabled={saving}
+                value={recSettings.secondaryWidth || 960}
+                onChange={(e) => patchRecordingSettings({ secondaryWidth: Number(e.target.value) })}
+              >
+                <option value={640}>640px</option>
+                <option value={960}>960px</option>
+                <option value={1280}>1280px</option>
+              </select>
+            </div>
+          </div>
+        )}
       </div>
 
       <div style={{ marginBottom: 16 }}>

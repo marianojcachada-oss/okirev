@@ -146,6 +146,8 @@ create table if not exists settings (
   recording_preset text not null default 'balanceado', -- 'ahorro' | 'balanceado' | 'alta_calidad' | 'personalizado' — solo para recordar qué preset eligió el admin
   recording_audio_enabled boolean not null default false, -- apagado por default y separado del video — graba audio del sistema (incluye la voz de quien llame) y del micrófono
   recording_priority_site text, -- hostname de un sitio conocido (ej. app.taxicaller.net) — el monitor donde esté ese sitio en primer plano se graba en mejor calidad que el resto
+  recording_priority_width integer not null default 1280, -- resolución para la pantalla con el sitio priorizado
+  recording_secondary_width integer not null default 960, -- resolución para el resto de las pantallas, cuando hay un sitio priorizado configurado
   recording_retention_days integer not null default 30, -- cuanto se guarda antes de borrarse solo
   desktop_token text,
   constraint settings_single_row check (id = 1)

@@ -65,7 +65,7 @@ async function startScreenRecording() {
       await window.pulso.setPrioritySite?.(null);
     }
 
-    for (const session of recSessions) beginRecordingChunk(session);
+    for (const session of recSessions) await beginRecordingChunk(session);
   } catch (err) {
     console.error("No se pudo iniciar la grabación de pantalla:", err.message);
     window.pulso.logIssue?.("recording-start", err.message);
@@ -115,7 +115,10 @@ async function startSessionForScreen(sourceId, screenIndex, withAudio) {
     ]);
   }
 
-  const session = { screenIndex, chunks: [], chunkTimer: null, pendingUpload: null, micStream: null, audioContext: null };
+  const session = {
+    screenIndex, sourceId, chunks: [], chunkTimer: null, pendingUpload: null, micStream: null, audioContext: null,
+    currentWidth: recConfig.maxWidth || 1280,
+  };
 
   if (!recConfig.audioEnabled || !withAudio) {
     session.stream = desktopStream;
@@ -164,16 +167,60 @@ function msUntilNextChunkBoundary() {
   return boundaryMs - (Date.now() % boundaryMs);
 }
 
-function beginRecordingChunk(session) {
+// Si hay un sitio priorizado configurado, decide a qué ancho debe grabar esta pantalla en el
+// pedazo que está por arrancar, y si cambió respecto al pedazo anterior, vuelve a pedir la
+// captura de video a ese nuevo ancho — sin tocar el audio, que sigue funcionando igual sin
+// importar la resolución del video.
+async function maybeSwitchResolution(session) {
+  if (!recConfig.prioritySite) return;
+  // Todavía no hay ningún dato acumulado (recién arrancando, o la primera ronda no terminó) —
+  // se graba a la resolución normal para todas, en vez de asumir que esta pantalla "perdió".
+  if (currentPriorityScreenIndex === null) {
+    if (session.currentWidth === (recConfig.maxWidth || 1280)) return;
+    session.currentWidth = recConfig.maxWidth || 1280; // se corrige recién en el próximo pedazo real (abajo)
+  }
+  const targetWidth = session.screenIndex === currentPriorityScreenIndex
+    ? (recConfig.priorityWidth || 1280)
+    : (recConfig.secondaryWidth || 960);
+  if (targetWidth === session.currentWidth) return;
+
+  try {
+    const newVideoStream = await Promise.race([
+      navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          mandatory: {
+            chromeMediaSource: "desktop",
+            chromeMediaSourceId: session.sourceId,
+            minFrameRate: recConfig.fps,
+            maxFrameRate: recConfig.fps,
+            maxWidth: targetWidth,
+          },
+        },
+      }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("tiempo de espera agotado")), 8000)),
+    ]);
+    const oldVideoTracks = session.stream.getVideoTracks();
+    const audioTracks = session.stream.getAudioTracks(); // se conservan tal cual, no dependen de la resolución
+    session.stream = new MediaStream([...newVideoStream.getVideoTracks(), ...audioTracks]);
+    oldVideoTracks.forEach((t) => t.stop());
+    session.currentWidth = targetWidth;
+  } catch (err) {
+    console.error(`No se pudo cambiar la resolución de la pantalla ${session.screenIndex}, sigue con la anterior:`, err.message);
+    window.pulso.logIssue?.("recording-start", `cambio de resolución (pantalla ${session.screenIndex}) falló: ${err.message}`);
+  }
+}
+
+async function beginRecordingChunk(session) {
+  await maybeSwitchResolution(session);
   if (!session.stream) return;
   session.chunks = [];
-  let bitrate = REC_QUALITY_BITRATES[recConfig.quality] || REC_QUALITY_BITRATES.medium;
-  // Si hay un sitio priorizado y ya sabemos qué pantalla ganó la ronda anterior: esa pantalla
-  // graba con más calidad, las demás con menos — sin este dato (recién arrancando, o sin sitio
-  // configurado), todas graban igual, como siempre.
-  if (recConfig.prioritySite && currentPriorityScreenIndex !== null) {
-    bitrate = session.screenIndex === currentPriorityScreenIndex ? Math.round(bitrate * 1.5) : Math.round(bitrate * 0.6);
-  }
+  // La compresión sigue la misma calidad configurada, pero proporcional al ancho real de esta
+  // pantalla en este pedazo — una pantalla a 960px no necesita tantos bits como una a 1280px
+  // para verse igual de bien, así que graba más liviana sin perder nitidez relativa.
+  const baseBitrate = REC_QUALITY_BITRATES[recConfig.quality] || REC_QUALITY_BITRATES.medium;
+  const baseWidth = recConfig.maxWidth || 1280;
+  const bitrate = Math.round(baseBitrate * (session.currentWidth / baseWidth));
   const hasAudio = session.stream.getAudioTracks().length > 0;
   const mimeType = hasAudio && MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")
     ? "video/webm;codecs=vp8,opus"
@@ -202,7 +249,7 @@ function beginRecordingChunk(session) {
     if (blob.size > 0) {
       session.pendingUpload = uploadRecordingChunk(blob, Math.round(durationMs / 1000), session.screenIndex);
     }
-    if (recActive && session.stream) beginRecordingChunk(session); // sigue con el mismo stream, arranca el proximo pedazo
+    if (recActive && session.stream) await beginRecordingChunk(session); // arranca el proximo pedazo (puede cambiar de resolución acá, si corresponde)
   };
   session.recorder.start(1000); // pedirle datos cada 1s — sin esto, cuando el audio viene mezclado por AudioContext, MediaRecorder no entrega nada hasta el final
   clearTimeout(session.chunkTimer);

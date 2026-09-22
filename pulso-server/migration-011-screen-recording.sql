@@ -12,6 +12,8 @@ alter table settings add column if not exists recording_max_width integer not nu
 alter table settings add column if not exists recording_preset text not null default 'balanceado';
 alter table settings add column if not exists recording_audio_enabled boolean not null default false;
 alter table settings add column if not exists recording_priority_site text;
+alter table settings add column if not exists recording_priority_width integer not null default 1280;
+alter table settings add column if not exists recording_secondary_width integer not null default 960;
 
 create table if not exists screen_recordings (
   id text primary key,
