@@ -1,9 +1,13 @@
-import express, { Router } from "express";
+import { Router } from "express";
+import { Transform, pipeline } from "node:stream";
 import { query, newId, todayDateStr } from "../db.js";
 import { requireSession, requirePermission } from "../middleware/requireSession.js";
-import { isStorageConfigured, uploadRecording, createPlaybackUrl, recordingExists } from "../storage.js";
+import { isStorageConfigured, uploadRecordingStream, createPlaybackUrl, recordingExists, deleteObjects } from "../storage.js";
 
 const router = Router();
+
+// Mismo tope que tenía antes el express.raw: un pedazo de video no puede pasar de 50 MB.
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
 function mapSettings(row, override) {
   return {
@@ -103,13 +107,25 @@ router.put("/settings", requireSession, requirePermission("ajustes"), async (req
 // POST /api/recordings/upload — el tracker manda el video de un pedazo entero en el cuerpo del
 // pedido (binario, no JSON). Un solo paso: sube a Storage y deja la fila en la base, todo junto.
 // Siempre actúa sobre el empleado de la sesión, nunca sobre otro.
-router.post("/upload", requireSession, express.raw({ type: "video/webm", limit: "50mb" }), async (req, res) => {
+//
+// El video se pasa a Storage EN STREAMING (sin guardarlo entero en la memoria del servidor):
+// antes se cargaba cada pedazo completo con express.raw, y con muchos operadores subiendo a la
+// vez el servidor (512 MB de RAM) se quedaba sin memoria y Render lo reiniciaba.
+router.post("/upload", requireSession, async (req, res) => {
   if (!isStorageConfigured()) {
     return res.status(503).json({ error: "El almacenamiento de grabaciones no está configurado en el servidor todavía." });
   }
-  if (!req.body || req.body.length === 0) {
+  const contentType = String(req.headers["content-type"] || "").split(";")[0].trim().toLowerCase();
+  const declaredLength = req.headers["content-length"] !== undefined ? Number(req.headers["content-length"]) : null;
+  if (contentType !== "video/webm" || declaredLength === 0) {
+    req.resume();
     return res.status(400).json({ error: "No llegó ningún video en el pedido." });
   }
+  if (declaredLength !== null && declaredLength > MAX_UPLOAD_BYTES) {
+    req.resume();
+    return res.status(413).json({ error: "El video supera el tamaño máximo permitido." });
+  }
+
   const employeeId = req.session.employeeId;
   const id = newId("rec");
   const today = todayDateStr();
@@ -117,12 +133,38 @@ router.post("/upload", requireSession, express.raw({ type: "video/webm", limit: 
   const path = `${employeeId}/${today}/screen${screenIndex}-${id}.webm`;
   const durationSeconds = Number(req.query.durationSeconds) || null;
 
-  await uploadRecording(path, req.body, "video/webm");
+  // Cuenta los bytes que pasan (para guardar el tamaño real en la base) y corta el pedido si
+  // se pasa del tope aunque no haya declarado su tamaño.
+  let receivedBytes = 0;
+  const meter = new Transform({
+    transform(chunk, _enc, cb) {
+      receivedBytes += chunk.length;
+      if (receivedBytes > MAX_UPLOAD_BYTES) return cb(new Error("El video supera el tamaño máximo permitido."));
+      cb(null, chunk);
+    },
+  });
+  pipeline(req, meter, () => {}); // si el tracker corta la conexión a mitad, meter se destruye y la subida falla limpia
+
+  try {
+    await uploadRecordingStream(path, meter, "video/webm", declaredLength || undefined);
+  } catch (err) {
+    console.error(`[recordings] falló la subida de ${path}: ${err.message}`);
+    if (!res.headersSent) {
+      const tooBig = receivedBytes > MAX_UPLOAD_BYTES;
+      return res.status(tooBig ? 413 : 502).json({ error: tooBig ? "El video supera el tamaño máximo permitido." : "No se pudo guardar el video. Se reintenta solo." });
+    }
+    return;
+  }
+
+  if (receivedBytes === 0) {
+    await deleteObjects([path]).catch(() => {});
+    return res.status(400).json({ error: "No llegó ningún video en el pedido." });
+  }
 
   await query(
     `insert into screen_recordings (id, employee_id, employee_name, started_at, ended_at, storage_path, file_size_bytes, duration_seconds, screen_index)
      values ($1, $2, $3, now() - ($4 || ' seconds')::interval, now(), $5, $6, $7, $8)`,
-    [id, employeeId, req.session.name, durationSeconds || 0, path, req.body.length, durationSeconds, screenIndex]
+    [id, employeeId, req.session.name, durationSeconds || 0, path, receivedBytes, durationSeconds, screenIndex]
   );
 
   res.json({ id, path });
