@@ -258,19 +258,90 @@ async function beginRecordingChunk(session) {
   }, msUntilNextChunkBoundary());
 }
 
+// Subida de un pedazo. Primero se intenta la forma directa (el tracker sube el video a
+// Supabase Storage con una URL firmada que le da el servidor — los bytes NO pasan por Render).
+// Si por cualquier motivo eso falla, se usa la forma de siempre (subir al servidor), así que
+// una grabación no se pierde por un problema en la subida directa.
+let recDirectFailures = 0;
+let recDirectPausedUntil = 0;
+
+async function uploadChunkDirect(blob, durationSeconds, screenIndex) {
+  const authHeaders = { Authorization: `Bearer ${state.config.sessionToken}` };
+  const api = state.config.apiUrl;
+
+  // 1) El servidor elige la ruta y entrega la URL de subida.
+  const urlRes = await fetch(`${api}/recordings/upload-url`, {
+    method: "POST",
+    headers: { ...authHeaders, "Content-Type": "application/json" },
+    body: JSON.stringify({ screenIndex }),
+  });
+  if (!urlRes.ok) throw new Error(`upload-url HTTP ${urlRes.status}`);
+  const { id, path, uploadUrl, apiKey } = await urlRes.json();
+
+  // 2) Subida directa a Supabase. Primero con el cuerpo crudo; si Storage lo rechaza por el
+  // formato (4xx), se reintenta como formulario (la forma que usa el SDK oficial para un Blob).
+  const extra = apiKey ? { apikey: apiKey } : {};
+  let putRes = await fetch(uploadUrl, { method: "PUT", headers: { "Content-Type": "video/webm", ...extra }, body: blob });
+  if (!putRes.ok && putRes.status >= 400 && putRes.status < 500 && putRes.status !== 401 && putRes.status !== 403) {
+    const form = new FormData();
+    form.append("cacheControl", "3600");
+    form.append("", blob, "video.webm");
+    putRes = await fetch(uploadUrl, { method: "PUT", headers: { ...extra }, body: form });
+  }
+  if (!putRes.ok) throw new Error(`Storage HTTP ${putRes.status}`);
+
+  // 3) Avisar al servidor: confirma que el archivo está y crea el registro. Se reintenta un par
+  // de veces porque el video ya está subido y solo falta registrarlo.
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const doneRes = await fetch(`${api}/recordings/complete`, {
+        method: "POST",
+        headers: { ...authHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify({ path, durationSeconds, screenIndex }),
+      });
+      if (!doneRes.ok) throw new Error(`complete HTTP ${doneRes.status}`);
+      return (await doneRes.json()).id || id;
+    } catch (err) {
+      lastErr = err;
+      await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+    }
+  }
+  throw lastErr;
+}
+
+// Plan B: la forma de siempre, el video pasa por el servidor.
+async function uploadChunkViaServer(blob, durationSeconds, screenIndex) {
+  const buffer = await blob.arrayBuffer();
+  const res = await fetch(
+    `${state.config.apiUrl}/recordings/upload?durationSeconds=${durationSeconds}&screenIndex=${screenIndex}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "video/webm", Authorization: `Bearer ${state.config.sessionToken}` },
+      body: buffer,
+    }
+  );
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return (await res.json()).id;
+}
+
 async function uploadRecordingChunk(blob, durationSeconds, screenIndex) {
   try {
-    const buffer = await blob.arrayBuffer();
-    const res = await fetch(
-      `${state.config.apiUrl}/recordings/upload?durationSeconds=${durationSeconds}&screenIndex=${screenIndex}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "video/webm", Authorization: `Bearer ${state.config.sessionToken}` },
-        body: buffer,
+    let id = null;
+    if (Date.now() >= recDirectPausedUntil) {
+      try {
+        id = await uploadChunkDirect(blob, durationSeconds, screenIndex);
+        recDirectFailures = 0;
+      } catch (err) {
+        // Con 3 fallos seguidos, se deja de intentar la forma directa por 15 minutos (para no
+        // sumar demora a cada pedazo si hay un problema de red o de configuración).
+        recDirectFailures++;
+        if (recDirectFailures >= 3) recDirectPausedUntil = Date.now() + 15 * 60 * 1000;
+        console.error("Subida directa falló, se usa el servidor:", err.message);
+        window.pulso.logIssue?.("recording-upload", `subida directa falló (pantalla ${screenIndex}), se usa el servidor: ${err.message}`);
       }
-    );
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const { id } = await res.json();
+    }
+    if (!id) id = await uploadChunkViaServer(blob, durationSeconds, screenIndex);
     captureThumbnail(blob)
       .then((thumbnail) => {
         if (!thumbnail) return;

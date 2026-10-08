@@ -2,12 +2,20 @@ import { Router } from "express";
 import { Transform, pipeline } from "node:stream";
 import { query, newId, todayDateStr } from "../db.js";
 import { requireSession, requirePermission } from "../middleware/requireSession.js";
-import { isStorageConfigured, uploadRecordingStream, createPlaybackUrl, recordingExists, deleteObjects } from "../storage.js";
+import {
+  isStorageConfigured, uploadRecordingStream, createPlaybackUrl, recordingExists, deleteObjects,
+  createRecordingUploadUrl, getRecordingInfo,
+} from "../storage.js";
 
 const router = Router();
 
 // Mismo tope que tenía antes el express.raw: un pedazo de video no puede pasar de 50 MB.
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+
+// "HHmm" en hora de Atlanta (ET), para que los archivos queden ordenados por hora dentro del día.
+function timeKey(date = new Date()) {
+  return date.toLocaleTimeString("en-GB", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hour12: false }).replace(":", "");
+}
 
 function mapSettings(row, override) {
   return {
@@ -102,6 +110,65 @@ router.put("/settings", requireSession, requirePermission("ajustes"), async (req
   }
   const { rows } = await query("select * from settings where id = 1");
   res.json(mapSettings(rows[0]));
+});
+
+// ---- Subida directa a Storage (la forma principal; /upload de abajo queda de plan B) ----
+//
+// 1) POST /upload-url  -> el servidor elige la ruta y entrega una URL firmada de un solo uso.
+// 2) El tracker sube el video DIRECTO a Supabase con esa URL (los bytes no pasan por acá).
+// 3) POST /complete    -> el servidor confirma en Storage que el archivo está y recién ahí
+//                         crea la fila en la base (así el panel nunca lista un video inexistente).
+// Ruta del archivo: {empleado}/{fecha}/{HHmm}-screen{N}-{id}.webm
+
+router.post("/upload-url", requireSession, async (req, res) => {
+  if (!isStorageConfigured()) {
+    return res.status(503).json({ error: "El almacenamiento de grabaciones no está configurado en el servidor todavía." });
+  }
+  const employeeId = req.session.employeeId;
+  const screenIndex = Math.max(0, Math.min(9, Math.floor(Number(req.body?.screenIndex) || 0)));
+  const id = newId("rec");
+  const path = `${employeeId}/${todayDateStr()}/${timeKey()}-screen${screenIndex}-${id}.webm`;
+  const uploadUrl = await createRecordingUploadUrl(path);
+  // La clave "anon" es pública por diseño (no es la de servicio). Solo se manda si está
+  // configurada: algunas configuraciones de Supabase la piden como encabezado `apikey`.
+  res.json({ id, path, uploadUrl, apiKey: process.env.SUPABASE_ANON_KEY || null, maxBytes: MAX_UPLOAD_BYTES });
+});
+
+router.post("/complete", requireSession, async (req, res) => {
+  if (!isStorageConfigured()) {
+    return res.status(503).json({ error: "El almacenamiento de grabaciones no está configurado en el servidor todavía." });
+  }
+  const employeeId = req.session.employeeId;
+  const path = String(req.body?.path || "");
+  const durationSeconds = Number(req.body?.durationSeconds) || null;
+  const screenIndex = Math.max(0, Math.min(9, Math.floor(Number(req.body?.screenIndex) || 0)));
+
+  // Solo se acepta una ruta dentro de la carpeta del propio empleado y con el formato exacto
+  // que genera /upload-url — un tracker no puede registrar archivos de otro operador.
+  const prefix = `${employeeId}/`;
+  const match = path.startsWith(prefix) && path.slice(prefix.length).match(/^\d{4}-\d{2}-\d{2}\/\d{4}-screen\d-(rec\d+)\.webm$/);
+  if (!match) return res.status(400).json({ error: "Ruta de grabación inválida." });
+  const id = match[1];
+
+  // Si el aviso se repite (reintento), no se duplica la fila.
+  const existing = await query("select id from screen_recordings where storage_path = $1", [path]);
+  if (existing.rows[0]) return res.json({ id: existing.rows[0].id, path });
+
+  const info = await getRecordingInfo(path);
+  if (!info || info.size === 0) {
+    return res.status(404).json({ error: "El video todavía no está en el almacenamiento." });
+  }
+  if (info.size > MAX_UPLOAD_BYTES) {
+    await deleteObjects([path]).catch(() => {});
+    return res.status(413).json({ error: "El video supera el tamaño máximo permitido." });
+  }
+
+  await query(
+    `insert into screen_recordings (id, employee_id, employee_name, started_at, ended_at, storage_path, file_size_bytes, duration_seconds, screen_index)
+     values ($1, $2, $3, now() - ($4 || ' seconds')::interval, now(), $5, $6, $7, $8)`,
+    [id, employeeId, req.session.name, durationSeconds || 0, path, info.size, durationSeconds, screenIndex]
+  );
+  res.json({ id, path });
 });
 
 // POST /api/recordings/upload — el tracker manda el video de un pedazo entero en el cuerpo del

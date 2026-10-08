@@ -96,6 +96,79 @@ export async function createPlaybackUrl(path, expiresInSeconds = 3600) {
 
 export async function deleteObjects(paths) {
   if (paths.length === 0) return;
-  const { error } = await supabase.storage.from(BUCKET).remove(paths);
+  // De a tandas: mandar miles de rutas en un solo pedido puede fallar y dejar todo sin borrar.
+  for (let i = 0; i < paths.length; i += 100) {
+    const { error } = await supabase.storage.from(BUCKET).remove(paths.slice(i, i + 100));
+    if (error) throw new Error(error.message);
+  }
+}
+
+// ---- Subida directa del tracker a Storage ----
+
+// URL de subida de UN solo archivo, en una ruta fija elegida por el servidor. El tracker sube
+// el video directo a Supabase con esta URL: los bytes no pasan por Render. La URL sirve para
+// esa ruta nada más (no para otras) y vence sola.
+export async function createRecordingUploadUrl(path) {
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUploadUrl(path);
   if (error) throw new Error(error.message);
+  return data.signedUrl;
+}
+
+// Datos reales del archivo guardado (tamaño), o null si no existe. Es lo que se usa para
+// confirmar que la subida directa de verdad ocurrió antes de crear la fila en la base.
+export async function getRecordingInfo(path) {
+  const slash = path.lastIndexOf("/");
+  const folder = path.slice(0, slash);
+  const filename = path.slice(slash + 1);
+  const { data, error } = await supabase.storage.from(BUCKET).list(folder, { search: filename });
+  if (error) throw new Error(error.message);
+  const file = (data || []).find((f) => f.name === filename);
+  if (!file) return null;
+  return { size: Number(file.metadata?.size) || 0 };
+}
+
+// Pone límites al bucket (tamaño máximo por archivo y solo video/webm) para que nadie pueda
+// subir otra cosa con una URL firmada. El bucket sigue siendo PRIVADO. Se intenta una vez al
+// arrancar; si falla solo se avisa en el log (también se puede poner a mano desde Supabase →
+// Storage → screen-recordings → Edit bucket).
+export async function ensureBucketLimits(maxBytes) {
+  if (!supabase) return;
+  const { error } = await supabase.storage.updateBucket(BUCKET, {
+    public: false,
+    fileSizeLimit: maxBytes,
+    allowedMimeTypes: ["video/webm"],
+  });
+  if (error) throw new Error(error.message);
+}
+
+// Borra carpetas de días vencidos DIRECTO en Storage (ruta: {empleado}/{YYYY-MM-DD}/archivo),
+// sin depender de la base. Sirve para limpiar archivos que quedaron sueltos (subidos pero
+// nunca registrados) y cualquier cosa que la limpieza por filas no haya alcanzado.
+// `cutoffDate` = "YYYY-MM-DD": se borran los días estrictamente anteriores a esa fecha.
+// `maxFiles` limita el trabajo de cada pasada.
+export async function deleteFoldersBefore(cutoffDate, maxFiles = 2000) {
+  const bucket = supabase.storage.from(BUCKET);
+  let removed = 0;
+  const listAll = async (prefix) => {
+    const out = [];
+    for (let offset = 0; ; offset += 1000) {
+      const { data, error } = await bucket.list(prefix, { limit: 1000, offset });
+      if (error) throw new Error(error.message);
+      out.push(...(data || []));
+      if (!data || data.length < 1000) break;
+    }
+    return out;
+  };
+  const employees = (await listAll("")).filter((e) => e.id === null); // las carpetas no tienen id
+  for (const emp of employees) {
+    const days = (await listAll(emp.name)).filter((d) => d.id === null && /^\d{4}-\d{2}-\d{2}$/.test(d.name) && d.name < cutoffDate);
+    for (const day of days) {
+      if (removed >= maxFiles) return removed;
+      const files = (await listAll(`${emp.name}/${day.name}`)).filter((f) => f.id !== null);
+      const paths = files.map((f) => `${emp.name}/${day.name}/${f.name}`);
+      await deleteObjects(paths);
+      removed += paths.length;
+    }
+  }
+  return removed;
 }

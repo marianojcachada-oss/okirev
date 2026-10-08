@@ -19,6 +19,7 @@ import recordingsRouter from "./routes/recordings.js";
 import { pool } from "./db.js";
 import { startAbsenceChecker } from "./absenceCheck.js";
 import { startRecordingCleanup } from "./recordingCleanup.js";
+import { ensureBucketLimits } from "./storage.js";
 
 const app = express();
 
@@ -65,4 +66,8 @@ app.listen(PORT, () => {
   console.log(`OKlrev API escuchando en http://localhost:${PORT}`);
   startAbsenceChecker();
   startRecordingCleanup();
+  // Tope de 50 MB por archivo y solo video/webm en el bucket (necesario para la subida directa).
+  ensureBucketLimits(50 * 1024 * 1024)
+    .then(() => console.log("[storage] límites del bucket aplicados (50 MB, video/webm)"))
+    .catch((err) => console.error("[storage] no se pudieron aplicar los límites del bucket:", err.message));
 });
