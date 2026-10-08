@@ -10,6 +10,23 @@ const FILTERS = [
   { id: "todas", label: "Todas" },
 ];
 
+// "08/10/2026 14:27" en hora de Atlanta (ET), igual que el reloj del panel. Si por algún
+// motivo la alerta no trae fecha completa (alertas muy viejas), se muestra solo la hora guardada.
+function formatAlertDateTime(a) {
+  if (!a.createdAt) return a.time || "—";
+  const d = new Date(a.createdAt);
+  if (Number.isNaN(d.getTime())) return a.time || "—";
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone: "America/New_York",
+      day: "2-digit", month: "2-digit", year: "numeric",
+      hour: "2-digit", minute: "2-digit", hour12: false,
+    }).formatToParts(d).map((p) => [p.type, p.value])
+  );
+  const hh = parts.hour === "24" ? "00" : parts.hour;
+  return `${parts.day}/${parts.month}/${parts.year} ${hh}:${parts.minute}`;
+}
+
 export default function Alertas() {
   const [filter, setFilter] = useState("abiertas");
   const { data: alerts, loading, error, refetch } = useApi("/alerts");
@@ -65,7 +82,7 @@ export default function Alertas() {
               <Th>Tipo</Th>
               <Th>Operador</Th>
               <Th>Detalle</Th>
-              <Th align="right">Hora</Th>
+              <Th align="right">Fecha y hora</Th>
               <Th align="right">Acción</Th>
             </tr>
           </thead>
@@ -81,7 +98,7 @@ export default function Alertas() {
                   <span style={{ color: COLORS.textSecondary }}>{a.detail}</span>
                 </Td>
                 <Td align="right" mono>
-                  {a.time}
+                  {formatAlertDateTime(a)}
                 </Td>
                 <Td align="right">
                   {a.status === "abierta" ? (

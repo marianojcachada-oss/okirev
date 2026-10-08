@@ -14,6 +14,8 @@ function mapRow(row) {
     employee: row.employee_name,
     detail: row.detail,
     time: row.time,
+    // Fecha y hora completas (ISO) para que el panel muestre día/mes/año además de la hora.
+    createdAt: row.created_at ? new Date(row.created_at).toISOString() : null,
     status: row.status,
   };
 }
