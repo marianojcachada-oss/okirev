@@ -28,11 +28,15 @@ router.get("/current/:employeeId", async (req, res) => {
   );
   const allowedMinutes = configResult.rows[0]?.minutes || 15;
 
+  // Solo breaks YA CERRADOS. El break abierto (si hay) lo suma el tracker en vivo con
+  // (Date.now() - breakStartedAt); si el servidor también lo incluyera acá, el tiempo se
+  // contaría dos veces en cada refresco (el tracker refresca cada 30 s) y el contador
+  // correría al doble de velocidad.
   let usedSeconds = 0;
   if (attendanceId) {
     const usedResult = await query(
-      `select coalesce(sum(extract(epoch from (coalesce(ended_at, now()) - started_at))), 0)::int as seconds
-       from breaks where attendance_id = $1`,
+      `select coalesce(sum(extract(epoch from (ended_at - started_at))), 0)::int as seconds
+       from breaks where attendance_id = $1 and ended_at is not null`,
       [attendanceId]
     );
     usedSeconds = usedResult.rows[0]?.seconds || 0;

@@ -26,6 +26,7 @@ const state = {
   breakTickInterval: null,
   breakState: null, // { allowedSeconds, usedSeconds, isOnBreak, breakStartedAt }
   breakRang: false, // whether the "time's up" beep already played for the current break
+  breakTransition: false, // true mientras se inicia/termina un break (evita que el refresco de 30 s reanude tracking/grabación en esa ventana)
 };
 
 function $(id) {
@@ -243,7 +244,11 @@ async function refreshBreakStatus() {
   try {
     state.breakState = await apiGet(state.config.apiUrl, `/breaks/current/${state.config.employeeId}`);
   } catch {
-    state.breakState = null;
+    // Un fallo puntual de red/servidor NO debe tirar abajo el contador: si ya había un
+    // break en curso se conserva el último estado conocido y el reloj local sigue corriendo
+    // (el próximo refresco lo corrige). Antes se ponía en null y, como el intervalo de 1 s
+    // solo se reinicia con isOnBreak, el contador quedaba congelado.
+    if (!state.breakState?.isOnBreak) state.breakState = null;
   }
   renderBreakDisplay();
 
@@ -263,6 +268,7 @@ async function endBreak() {
 async function handleBreakToggle() {
   const btn = $("break-btn");
   btn.disabled = true;
+  state.breakTransition = true;
   try {
     if (state.breakState?.isOnBreak) {
       await endBreak();
@@ -275,6 +281,7 @@ async function handleBreakToggle() {
   } catch (err) {
     alert(err.message);
   } finally {
+    state.breakTransition = false;
     btn.disabled = !isCheckedIn();
   }
 }
@@ -395,8 +402,12 @@ function updateStatusFromBlocks(blocks) {
     $("timer").textContent = "00:00:00";
   }
 
-  ensureTracking(!!open);
-  if (open && !recActive) {
+  // Durante un break (10-31) ni el tracking ni la grabación deben reanudarse: este refresco
+  // corre cada 30 s y, sin esta guarda, los volvía a prender en pleno break (contradiciendo
+  // handleBreakToggle, que acaba de frenarlos). endBreak() los reanuda al volver.
+  const onBreak = !!state.breakState?.isOnBreak || state.breakTransition;
+  ensureTracking(!!open && !onBreak);
+  if (open && !recActive && !onBreak) {
     maybeStartRecording();
   } else if (!open && recActive) {
     stopScreenRecording().catch((err) => console.error("Error al parar la grabación:", err.message));

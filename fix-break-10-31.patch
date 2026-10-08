@@ -1,0 +1,48 @@
+diff -u a/pulso-server/src/routes/breaks.js b/pulso-server/src/routes/breaks.js
+--- a/pulso-server/src/routes/breaks.js
++++ b/pulso-server/src/routes/breaks.js
+@@ -28,11 +28,15 @@
+   );
+   const allowedMinutes = configResult.rows[0]?.minutes || 15;
+ 
++  // Solo breaks YA CERRADOS. El break abierto (si hay) lo suma el tracker en vivo con
++  // (Date.now() - breakStartedAt); si el servidor también lo incluyera acá, el tiempo se
++  // contaría dos veces en cada refresco (el tracker refresca cada 30 s) y el contador
++  // correría al doble de velocidad.
+   let usedSeconds = 0;
+   if (attendanceId) {
+     const usedResult = await query(
+-      `select coalesce(sum(extract(epoch from (coalesce(ended_at, now()) - started_at))), 0)::int as seconds
+-       from breaks where attendance_id = $1`,
++      `select coalesce(sum(extract(epoch from (ended_at - started_at))), 0)::int as seconds
++       from breaks where attendance_id = $1 and ended_at is not null`,
+       [attendanceId]
+     );
+     usedSeconds = usedResult.rows[0]?.seconds || 0;
+diff -u a/pulso-tracker/src/renderer/app.js b/pulso-tracker/src/renderer/app.js
+--- a/pulso-tracker/src/renderer/app.js
++++ b/pulso-tracker/src/renderer/app.js
+@@ -243,7 +243,11 @@
+   try {
+     state.breakState = await apiGet(state.config.apiUrl, `/breaks/current/${state.config.employeeId}`);
+   } catch {
+-    state.breakState = null;
++    // Un fallo puntual de red/servidor NO debe tirar abajo el contador: si ya había un
++    // break en curso, se conserva el último estado conocido y el reloj local sigue
++    // corriendo (el próximo refresco lo corrige). Antes se ponía en null y, como el
++    // intervalo de 1 s solo se reinicia con isOnBreak, el contador quedaba congelado.
++    if (!state.breakState?.isOnBreak) state.breakState = null;
+   }
+   renderBreakDisplay();
+ 
+@@ -393,7 +397,9 @@
+     $("timer").textContent = "00:00:00";
+   }
+ 
+-  ensureTracking(!!open);
++  // Durante un break el tracking debe seguir pausado: este refresco corre cada 30 s y, sin
++  // esta condición, lo reanudaba en pleno 10-31 (contradiciendo handleBreakToggle).
++  ensureTracking(!!open && !state.breakState?.isOnBreak);
+ }
+ 
+ async function refreshToday(silent) {
