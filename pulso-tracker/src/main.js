@@ -11,6 +11,21 @@ let mainWindow;
 let tray;
 let isQuitting = false;
 
+// Una sola copia del tracker por PC. Si ya hay una abierta (por ejemplo minimizada en la bandeja)
+// y el operador vuelve a abrir el programa, en vez de arrancar una segunda copia —que chocaba
+// con la primera por el puerto del puente con la extensión (17342) y mostraba el error "address
+// already in use"— se cierra esta y se trae al frente la que ya estaba corriendo.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    showFromTray();
+  });
+}
+
 const FULL_SIZE = { width: 380, height: 640 };
 const COMPACT_SIZE = { width: 300, height: 210 };
 
@@ -185,6 +200,7 @@ function setupAutoUpdate() {
 }
 
 app.whenReady().then(() => {
+  if (!gotSingleInstanceLock) return; // esta es la segunda copia: no arrancar nada, ya se está cerrando
   // Sin esto, Electron bloquea los pedidos de cámara/micrófono por default — y la promesa de
   // getUserMedia puede quedarse esperando para siempre en vez de fallar, trabando toda la
   // grabación (incluido el video) porque el código espera ese resultado antes de seguir.

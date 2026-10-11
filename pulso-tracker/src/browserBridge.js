@@ -49,6 +49,21 @@ function startBridgeServer() {
     res.end(JSON.stringify({ error: "No encontrado" }));
   });
 
+  // Si el puerto ya está ocupado (otra copia del tracker que todavía se está cerrando, por
+  // ejemplo durante una actualización, u otro programa), NO debe tirar abajo todo el tracker con
+  // un error: el puente con la extensión es un extra. Se avisa por consola y se reintenta unas
+  // veces; si nunca se libera, el tracker sigue funcionando sin el dato del sitio web abierto.
+  let attempts = 0;
+  server.on("error", (err) => {
+    console.error("Puente con la extensión del navegador:", err.message);
+    if (err.code === "EADDRINUSE" && attempts < 6) {
+      attempts += 1;
+      setTimeout(() => {
+        if (server) server.listen(PORT, "127.0.0.1");
+      }, 10000);
+    }
+  });
+
   server.listen(PORT, "127.0.0.1");
   return server;
 }
