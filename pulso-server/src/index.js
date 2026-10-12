@@ -23,7 +23,7 @@ import { ensureBucketLimits } from "./storage.js";
 
 const app = express();
 
-app.use(cors());
+app.use(cors({ exposedHeaders: ["Date"] })); // el tracker lee la hora del servidor de este encabezado
 app.use(express.json());
 
 app.get("/api/health", async (req, res) => {

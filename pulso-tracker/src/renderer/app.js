@@ -41,6 +41,28 @@ async function safeJson(res) {
   }
 }
 
+// El cronómetro y el break se calculaban con la hora de ESTA PC contra la hora del servidor: si
+// el reloj de la PC iba adelantado (ej. 45 s), la jornada arrancaba ya en 00:00:45. Se toma la
+// hora del servidor (encabezado Date de cada respuesta de la API) y se corrige la diferencia.
+let serverClockOffsetMs = 0;
+function serverNow() {
+  return Date.now() + serverClockOffsetMs;
+}
+(function trackServerClock() {
+  const originalFetch = window.fetch.bind(window);
+  window.fetch = async (...args) => {
+    const res = await originalFetch(...args);
+    try {
+      const apiBase = state && state.config && state.config.apiUrl;
+      if (apiBase && res.url && res.url.startsWith(apiBase)) {
+        const t = Date.parse(res.headers.get("date"));
+        if (!Number.isNaN(t)) serverClockOffsetMs = t + 500 - Date.now(); // +500: el encabezado viene truncado al segundo
+      }
+    } catch {}
+    return res;
+  };
+})();
+
 async function apiGet(base, path, token) {
   const headers = {};
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -217,7 +239,7 @@ function renderBreakDisplay() {
 
   let usedNow = b.usedSeconds;
   if (b.isOnBreak && b.breakStartedAt) {
-    usedNow += Math.floor((Date.now() - new Date(b.breakStartedAt).getTime()) / 1000);
+    usedNow += Math.floor((serverNow() - new Date(b.breakStartedAt).getTime()) / 1000);
   }
   const remaining = b.allowedSeconds - usedNow;
 
@@ -351,7 +373,7 @@ function renderBlocks(blocks) {
     .map((day) => {
       const dayBlocks = byDay.get(day).slice().sort((a, b) => (b.checkInAt || "").localeCompare(a.checkInAt || ""));
       const totalMs = dayBlocks.reduce((sum, b) => {
-        const end = b.checkOutAt ? new Date(b.checkOutAt) : new Date();
+        const end = b.checkOutAt ? new Date(b.checkOutAt) : new Date(serverNow());
         return sum + (end - new Date(b.checkInAt));
       }, 0);
       const rows = dayBlocks
@@ -391,7 +413,7 @@ function updateStatusFromBlocks(blocks) {
     $("status-label").textContent = "En curso";
     const startedAt = new Date(open.checkInAt).getTime();
     const tick = () => {
-      $("timer").textContent = fmtElapsed(Date.now() - startedAt);
+      $("timer").textContent = fmtElapsed(Math.max(0, serverNow() - startedAt));
     };
     tick();
     state.tickInterval = setInterval(tick, 1000);

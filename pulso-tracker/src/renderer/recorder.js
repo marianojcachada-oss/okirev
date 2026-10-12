@@ -130,7 +130,13 @@ async function startSessionForScreen(sourceId, screenIndex, withAudio) {
   // resuelve, esto no debe trabar la grabación de video para siempre.
   try {
     session.micStream = await Promise.race([
-      navigator.mediaDevices.getUserMedia({ audio: true, video: false }),
+      navigator.mediaDevices.getUserMedia({
+        // Sin esto el navegador aplica control automático de ganancia, cancelación de eco y supresión
+        // de ruido: bajan el volumen del micrófono cuando la persona habla (y en Windows pueden mover el
+        // nivel de entrada del sistema, afectando también a otros programas).
+        audio: { autoGainControl: false, echoCancellation: false, noiseSuppression: false },
+        video: false,
+      }),
       new Promise((_, reject) => setTimeout(() => reject(new Error("tiempo de espera agotado")), 5000)),
     ]);
   } catch (err) {
