@@ -242,6 +242,7 @@ async function beginRecordingChunk(session) {
   session.recorder.ondataavailable = (e) => { if (e.data.size > 0) session.chunks.push(e.data); };
   session.recorder.onstop = async () => {
     const durationMs = Date.now() - chunkStartedAt;
+    const procStart = Date.now();
     let blob = new Blob(session.chunks, { type: "video/webm" });
     // MediaRecorder no guarda la duración total del archivo, así que sin este arreglo el video
     // no se puede adelantar/rebobinar al reproducirlo (ni acá ni descargado aparte).
@@ -253,6 +254,8 @@ async function beginRecordingChunk(session) {
       }
     }
     if (blob.size > 0) {
+      const procMs = Date.now() - procStart;
+      if (procMs > 3000 || blob.size > 30 * 1024 * 1024) window.pulso.logIssue?.("recording-chunk", `pantalla ${session.screenIndex}: procesar el pedazo tardó ${procMs} ms, pesa ${Math.round(blob.size / 1048576)} MB`);
       session.pendingUpload = uploadRecordingChunk(blob, Math.round(durationMs / 1000), session.screenIndex);
     }
     if (recActive && session.stream) await beginRecordingChunk(session); // arranca el proximo pedazo (puede cambiar de resolución acá, si corresponde)
@@ -261,7 +264,7 @@ async function beginRecordingChunk(session) {
   clearTimeout(session.chunkTimer);
   session.chunkTimer = setTimeout(() => {
     if (session.recorder && session.recorder.state === "recording") session.recorder.stop();
-  }, msUntilNextChunkBoundary());
+  }, msUntilNextChunkBoundary() + session.screenIndex * 5000); // escalonado: cada pantalla corta unos segundos después de la anterior, no todas juntas
 }
 
 // Subida de un pedazo. Primero se intenta la forma directa (el tracker sube el video a

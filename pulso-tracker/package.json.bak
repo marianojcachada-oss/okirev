@@ -1,0 +1,44 @@
+{
+  "name": "oklrev-tracker",
+  "private": true,
+  "version": "1.0.7",
+  "description": "App de escritorio para que los operadores marquen check-in (1015) y check-out (1025)",
+  "main": "src/main.js",
+  "author": "D005 MANAGER",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
+  "devDependencies": {
+    "electron": "^31.3.1",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.oklrev.tracker",
+    "productName": "OKlrev Tracker",
+    "copyright": "Copyright © 2026 Taxi Laser LLC",
+    "files": ["src/**/*", "node_modules/**/*", "package.json"],
+    "directories": { "output": "release" },
+    "publish": {
+      "provider": "github",
+      "owner": "marianojcachada-oss",
+      "repo": "okirev"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "artifactName": "OKlrev-Tracker-Setup-${version}.${ext}"
+    }
+  }
+}
