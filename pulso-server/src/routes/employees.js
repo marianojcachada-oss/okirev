@@ -327,9 +327,17 @@ router.patch("/:id", async (req, res) => {
       [req.params.id]
     );
     const minutes = thresholdResult.rows[0]?.minutes || 5;
+    // Una sola alerta de inactividad por empleado cada 15 minutos. Se hace en una única consulta
+    // ("insertar solo si no hay otra reciente"), así el estado oscilando entre activo/inactivo no
+    // llena la lista. (Dos pedidos exactamente simultáneos podrían igual colarse, pero es raro.)
     await query(
       `insert into alerts (id, severity, type, employee_id, employee_name, detail, time, status)
-       values ($1, 'advertencia', 'Inactividad prolongada', $2, $3, $4, $5, 'abierta')`,
+       select $1::text, 'advertencia'::text, 'Inactividad prolongada'::text, $2::text, $3::text, $4::text, $5::text, 'abierta'::text
+       where not exists (
+         select 1 from alerts
+         where employee_id = $2::text and type = 'Inactividad prolongada'
+           and created_at > now() - interval '15 minutes'
+       )`,
       [
         newId("a"),
         req.params.id,
