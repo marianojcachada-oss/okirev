@@ -392,6 +392,7 @@ ipcMain.handle("tracking:start", (_event, payload) => {
         const body = {
           app: record.app,
           duration: formatDuration(record.durationMs),
+          device: os.hostname(), // desde qué PC se reporta (el servidor descarta lo que llega de una PC que no es la de la jornada)
         };
         if (record.category) body.category = record.category; // only set for "Inactivo"; otherwise the backend resolves it from the catalog
         const res = await fetch(`${apiUrl}/activities`, {
@@ -416,7 +417,7 @@ ipcMain.handle("tracking:start", (_event, payload) => {
         const res = await fetch(`${apiUrl}/employees/${employeeId}`, {
           method: "PATCH",
           headers: authHeaders(sessionToken),
-          body: JSON.stringify({ status, app: appLabel }),
+          body: JSON.stringify({ status, app: appLabel, device: os.hostname() }),
         });
         if (!res.ok) {
           const text = await res.text().catch(() => "");

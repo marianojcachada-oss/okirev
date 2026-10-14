@@ -29,6 +29,7 @@ function mapRow(row) {
     checkOutAt: row.check_out_at ? new Date(row.check_out_at).toISOString() : null,
     hours: hoursLabelFromDates(new Date(row.check_in_at), row.check_out_at ? new Date(row.check_out_at) : new Date()),
     late: row.late,
+    device: row.device || null, // PC desde la que se inició la jornada (si el tracker la informó)
   };
 }
 
@@ -117,11 +118,15 @@ router.post("/checkin", requireSession, async (req, res) => {
   const teamNameResult = await query("select name from teams where id = $1", [employee.team_id]);
   const teamName = teamNameResult.rows[0]?.name || null;
 
+  // PC desde la que se inicia la jornada: solo cuando el propio tracker marca su check-in (no cuando
+  // un administrador lo marca desde el panel para otra persona).
+  const device = employeeId === req.session.employeeId && typeof req.body.device === "string" ? req.body.device.trim().slice(0, 100) || null : null;
+
   const id = newId("at");
   const { rows } = await query(
-    `insert into attendance (id, employee_id, name, team, date, check_in, check_in_at, late)
-     values ($1, $2, $3, $4, $5, $6, now(), $7) returning *`,
-    [id, employeeId, employee.name, teamName, today, time, late]
+    `insert into attendance (id, employee_id, name, team, date, check_in, check_in_at, late, device)
+     values ($1, $2, $3, $4, $5, $6, now(), $7, $8) returning *`,
+    [id, employeeId, employee.name, teamName, today, time, late, device]
   );
 
   await query("update employees set status = 'activo', check_in = $1 where id = $2", [time, employeeId]);
@@ -153,6 +158,20 @@ router.post("/checkout", requireSession, async (req, res) => {
 
   await query("update employees set status = 'ausente', app = 'Sin trackear (fuera de turno)' where id = $1", [employeeId]);
 
+  res.json(mapRow(rows[0]));
+});
+
+// POST /api/attendance/transfer  { device }  -- pasa la jornada abierta de este empleado a la PC
+// indicada (cuando el operador la quiere seguir desde otra computadora). La PC anterior deja de
+// trackear sola en su próximo refresco.
+router.post("/transfer", requireSession, async (req, res) => {
+  const device = typeof req.body.device === "string" ? req.body.device.trim().slice(0, 100) : "";
+  if (!device) return res.status(400).json({ error: "Falta el nombre de la PC" });
+  const { rows } = await query(
+    "update attendance set device = $1 where employee_id = $2 and check_out_at is null returning *",
+    [device, req.session.employeeId]
+  );
+  if (!rows[0]) return res.status(400).json({ error: "No hay una jornada abierta para pasar a esta PC" });
   res.json(mapRow(rows[0]));
 });
 

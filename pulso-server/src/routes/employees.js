@@ -2,6 +2,7 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { query, newId, todayDateStr, nowHM, EFFECTIVE_CATEGORY_SQL, WITHIN_ATTENDANCE_SQL } from "../db.js";
 import { requireSession, requirePermission, requireSuperAdmin } from "../middleware/requireSession.js";
+import { isForeignDevice } from "../deviceOwner.js";
 
 const router = Router();
 
@@ -284,6 +285,13 @@ router.get("/:id", requireSession, requirePermission("empleados"), async (req, r
 // (the tracker authenticates via the device token on the routes that need it, not a dashboard
 // login), so it keeps working exactly as before.
 router.patch("/:id", async (req, res) => {
+  // Si la jornada se inició en OTRA PC, el estado que manda esta no se aplica (devuelve el actual).
+  if (await isForeignDevice(req.params.id, req.body.device)) {
+    const current = await query(`${SELECT_BASE} where e.id = $1`, [req.params.id]);
+    if (!current.rows[0]) return res.status(404).json({ error: "Empleado no encontrado" });
+    return res.json(mapRow(current.rows[0]));
+  }
+
   const fields = [];
   const values = [];
   let i = 1;

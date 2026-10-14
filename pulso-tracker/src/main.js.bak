@@ -283,6 +283,64 @@ function authHeaders(token) {
   return headers;
 }
 
+// --- Diagnóstico de cuelgues: deja rastro en el debug para saber qué pasó con la PC ---
+function startDiagnostics() {
+  const { powerMonitor, screen } = require("electron");
+  const mb = (bytes) => Math.round(bytes / 1048576);
+  try {
+    const pantallas = screen.getAllDisplays().map((d) => d.size.width + "x" + d.size.height + "@" + d.scaleFactor).join(", ");
+    const cpus = os.cpus();
+    const base = "v" + app.getVersion() + " | " + os.release() + " | RAM " + mb(os.totalmem()) + " MB | CPU " + cpus.length + "x " + ((cpus[0] && cpus[0].model) || "?") + " | pantallas " + screen.getAllDisplays().length + " (" + pantallas + ")";
+    app.getGPUInfo("basic")
+      .then((info) => {
+        const gpus = ((info && info.gpuDevice) || []).map((g) => "vendor=" + g.vendorId + " device=" + g.deviceId + " driver=" + (g.driverVersion || "?") + (g.active ? " (activa)" : "")).join(" ; ");
+        logSyncIssue("diag-inicio", base + " | GPU " + (gpus || "?"));
+      })
+      .catch(() => logSyncIssue("diag-inicio", base + " | GPU no disponible"));
+  } catch (err) {
+    logSyncIssue("diag-inicio", "no se pudo leer la info de la PC: " + err.message);
+  }
+
+  app.on("child-process-gone", (_event, d) => {
+    logSyncIssue("child-process-gone", "type=" + d.type + " reason=" + d.reason + " exitCode=" + d.exitCode + (d.name ? " name=" + d.name : ""));
+  });
+  for (const ev of ["suspend", "resume", "lock-screen", "unlock-screen", "shutdown"]) {
+    try { powerMonitor.on(ev, () => logSyncIssue("diag-energia", ev)); } catch {}
+  }
+  for (const ev of ["display-added", "display-removed"]) {
+    try { screen.on(ev, () => logSyncIssue("diag-pantallas", ev + " (ahora " + screen.getAllDisplays().length + ")")); } catch {}
+  }
+
+  // Si el proceso estuvo parado varios segundos (PC colgada o en suspensión), queda anotado.
+  let ultimoTick = Date.now();
+  setInterval(() => {
+    const ahora = Date.now();
+    const parado = ahora - ultimoTick - 1000;
+    ultimoTick = ahora;
+    if (parado > 5000) logSyncIssue("diag-pausa", "el proceso estuvo " + Math.round((parado + 1000) / 1000) + " s sin correr (PC colgada o en suspensión)");
+  }, 1000);
+
+  // Consumo del tracker: se anota si se dispara, y una línea de control cada 15 minutos.
+  let minutos = 0;
+  setInterval(() => {
+    try {
+      minutos++;
+      const procs = app.getAppMetrics();
+      const cpu = procs.reduce((s, p) => s + ((p.cpu && p.cpu.percentCPUUsage) || 0), 0);
+      const memMb = procs.reduce((s, p) => s + ((p.memory && p.memory.workingSetSize) || 0), 0) / 1024;
+      const libreMb = mb(os.freemem());
+      const librePct = (os.freemem() / os.totalmem()) * 100;
+      const alerta = cpu > 80 || memMb > 1500 || librePct < 10;
+      if (!alerta && minutos % 15 !== 0) return;
+      const detalle = procs.map((p) => p.type + ":" + Math.round((p.cpu && p.cpu.percentCPUUsage) || 0) + "%/" + Math.round(((p.memory && p.memory.workingSetSize) || 0) / 1024) + "MB").join(" ");
+      logSyncIssue(alerta ? "diag-recursos-ALTO" : "diag-recursos", "tracker CPU " + Math.round(cpu) + "% | " + Math.round(memMb) + " MB | RAM libre del sistema " + libreMb + " MB (" + Math.round(librePct) + "%) | " + detalle);
+    } catch {}
+  }, 60000);
+}
+app.whenReady().then(() => {
+  if (typeof gotSingleInstanceLock === "undefined" || gotSingleInstanceLock) startDiagnostics();
+});
+
 const syncLogPath = path.join(os.tmpdir(), "oklrev-sync-debug.txt");
 function logSyncIssue(context, detail) {
   try {

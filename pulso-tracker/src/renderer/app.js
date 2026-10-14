@@ -21,6 +21,7 @@ const state = {
   today: [],
   settings: null,
   trackingActive: false,
+  hostname: null, // nombre de esta PC; identifica desde dónde se inició la jornada
   tickInterval: null,
   syncInterval: null,
   breakTickInterval: null,
@@ -223,8 +224,13 @@ function fmtCountdown(totalSeconds) {
   return `${sign}${m}:${s}`;
 }
 
+// Una jornada abierta en OTRA PC del mismo usuario: esta PC no debe trackear ni grabar.
+function isForeignBlock(b) {
+  return !!(b && b.checkOut === null && b.device && state.hostname && b.device !== state.hostname);
+}
+
 function isCheckedIn() {
-  return state.today.some((b) => b.checkOut === null);
+  return state.today.some((b) => b.checkOut === null && !isForeignBlock(b));
 }
 
 function renderBreakDisplay() {
@@ -404,13 +410,14 @@ function renderBlocks(blocks) {
 
 function updateStatusFromBlocks(blocks) {
   const open = blocks.find((b) => b.checkOut === null);
+  const foreign = isForeignBlock(open);
   clearInterval(state.tickInterval);
 
   const toggleBtn = $("toggle-btn");
   if (open) {
-    toggleBtn.textContent = "Finalizar jornada";
-    toggleBtn.classList.add("active");
-    $("status-label").textContent = "En curso";
+    toggleBtn.textContent = foreign ? "Continuar jornada en esta PC" : "Finalizar jornada";
+    toggleBtn.classList.toggle("active", !foreign);
+    $("status-label").textContent = foreign ? `En curso en otra PC (${open.device})` : "En curso";
     const startedAt = new Date(open.checkInAt).getTime();
     const tick = () => {
       $("timer").textContent = fmtElapsed(Math.max(0, serverNow() - startedAt));
@@ -428,10 +435,10 @@ function updateStatusFromBlocks(blocks) {
   // corre cada 30 s y, sin esta guarda, los volvía a prender en pleno break (contradiciendo
   // handleBreakToggle, que acaba de frenarlos). endBreak() los reanuda al volver.
   const onBreak = !!state.breakState?.isOnBreak || state.breakTransition;
-  ensureTracking(!!open && !onBreak);
-  if (open && !recActive && !onBreak) {
+  ensureTracking(!!open && !foreign && !onBreak);
+  if (open && !foreign && !recActive && !onBreak) {
     maybeStartRecording();
-  } else if (!open && recActive) {
+  } else if ((!open || foreign) && recActive) {
     stopScreenRecording().catch((err) => console.error("Error al parar la grabación:", err.message));
   }
 }
@@ -460,10 +467,15 @@ async function handleToggle() {
   const toggleBtn = $("toggle-btn");
   toggleBtn.disabled = true;
   try {
-    if (open) {
+    if (open && isForeignBlock(open)) {
+      // La jornada está iniciada en otra PC: este botón la pasa a esta computadora.
+      const ok = await showConfirm(`La jornada está iniciada en otra PC (${open.device}). ¿Querés continuarla en esta computadora?`);
+      if (!ok) return;
+      await apiPost(state.config.apiUrl, "/attendance/transfer", { device: state.hostname }, state.config.sessionToken);
+    } else if (open) {
       await apiPost(state.config.apiUrl, "/attendance/checkout", { employeeId: state.config.employeeId }, state.config.sessionToken);
     } else {
-      await apiPost(state.config.apiUrl, "/attendance/checkin", { employeeId: state.config.employeeId }, state.config.sessionToken);
+      await apiPost(state.config.apiUrl, "/attendance/checkin", { employeeId: state.config.employeeId, device: state.hostname }, state.config.sessionToken);
     }
     await refreshToday(false);
   } catch (err) {
@@ -583,6 +595,7 @@ function setupUpdateBanner() {
 
 async function init() {
   state.config = await window.pulso.getConfig();
+  state.hostname = await window.pulso.getHostname().catch(() => null);
   if (!state.config?.apiUrl || !state.config?.employeeId) {
     showSetupView();
   } else {

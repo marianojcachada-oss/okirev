@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { query, newId, formatDurationSeconds, parseDurationToSeconds, EFFECTIVE_CATEGORY_SQL, WITHIN_ATTENDANCE_SQL, nowHM } from "../db.js";
 import { requireSession, requirePermission } from "../middleware/requireSession.js";
+import { isForeignDevice } from "../deviceOwner.js";
 
 const router = Router();
 
@@ -172,10 +173,13 @@ router.get("/timeline-by-day", requireSession, requirePermission("actividades"),
 // without needing to update the desktop app.
 router.post("/", requireSession, async (req, res) => {
   const employeeId = req.session.employeeId;
-  const { app, duration, category: providedCategory } = req.body;
+  const { app, duration, category: providedCategory, device } = req.body;
   if (!app || !duration) {
     return res.status(400).json({ error: "Faltan campos: app, duration" });
   }
+
+  // Si la jornada se inició en OTRA PC, lo que reporta esta no se cuenta (evita contar doble).
+  if (await isForeignDevice(employeeId, device)) return res.json({ ignored: true, reason: "jornada iniciada en otra PC" });
 
   const employeeResult = await query("select id, name from employees where id = $1", [employeeId]);
   const employee = employeeResult.rows[0];
