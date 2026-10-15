@@ -42,6 +42,14 @@ const SELECT_BASE = `
 
 // GET /api/employees
 router.get("/", requireSession, requirePermission("empleados", "asistencia", "actividades", "equipos", "tiempo-real", "grabaciones"), async (req, res) => {
+  // Un rol limitado a "Actividades: solo lo propio" (sin ninguna otra página con acceso completo)
+  // solo recibe su propio registro, no la lista con los nombres de todos los empleados.
+  const perms = req.session.role?.permissions || [];
+  const fullPages = ["empleados", "asistencia", "actividades", "equipos", "tiempo-real", "grabaciones"];
+  if (perms.includes("actividades:own") && !fullPages.some((p) => perms.includes(p))) {
+    const own = await query(`${SELECT_BASE} where e.id = $1`, [req.session.employeeId]);
+    return res.json(own.rows.map(mapRow));
+  }
   const { rows } = await query(`${SELECT_BASE} order by e.name`);
   res.json(rows.map(mapRow));
 });

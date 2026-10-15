@@ -69,7 +69,7 @@
       <div class="current-app full-only" id="current-app-label"></div>
     </div>
 
-    <div class="break-card">
+    <div class="break-card full-only">
       <div class="break-info">
         <span class="break-label">10-31 · Break</span>
         <span class="break-countdown" id="break-countdown">15:00</span>
@@ -77,13 +77,15 @@
       <button id="break-btn" class="break-btn" type="button" disabled>Iniciar 10-31</button>
     </div>
 
-    <div class="section-label full-only">Historial (últimos 7 días)</div>
+    <div class="section-row full-only">
+      <span class="section-label">Historial (últimos 7 días)</span>
+      <button id="info-btn" class="info-btn" type="button" title="¿Qué registra esta app?" aria-label="Información sobre qué registra esta app" aria-expanded="false">i</button>
+      <div id="info-popover" class="info-popover hidden" role="note">
+        Mientras tu jornada está iniciada, esta app registra qué aplicación tenés en primer
+        plano y detecta inactividad de mouse/teclado. No graba lo que escribís.
+      </div>
+    </div>
     <div id="blocks-list" class="blocks-list full-only"></div>
-
-    <p class="fineprint full-only">
-      Mientras tu jornada está iniciada, esta app registra qué aplicación tenés en primer
-      plano y detecta inactividad de mouse/teclado. No graba lo que escribís.
-    </p>
 
     <div class="footer full-only">
       <div class="footer-info">

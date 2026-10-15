@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { COLORS } from "../theme";
 import { useApi } from "../hooks/useApi";
+import { useAuth } from "../auth/AuthContext";
 import { Card, Initials, Th, Td, StateMessage } from "../components/ui";
 import { DATE_PRESETS, computeRange, atlantaToday } from "../utils/dateRanges";
 import { formatDuration } from "../utils/duration";
@@ -190,7 +191,9 @@ function CategorySummary({ aggregatedLog }) {
               </Pie>
               <Tooltip
                 formatter={(value, name) => [formatDuration(value), CATEGORY_LABELS[name] || name]}
-                contentStyle={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, fontSize: 12 }}
+                contentStyle={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, fontSize: 12, color: COLORS.textPrimary }}
+                itemStyle={{ color: COLORS.textPrimary }}
+                labelStyle={{ color: COLORS.textPrimary }}
               />
             </PieChart>
           </ResponsiveContainer>
@@ -246,7 +249,9 @@ function AppsSummary({ aggregatedLog }) {
               </Pie>
               <Tooltip
                 formatter={(value, name) => [formatDuration(value), name]}
-                contentStyle={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, fontSize: 12 }}
+                contentStyle={{ background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8, fontSize: 12, color: COLORS.textPrimary }}
+                itemStyle={{ color: COLORS.textPrimary }}
+                labelStyle={{ color: COLORS.textPrimary }}
               />
             </PieChart>
           </ResponsiveContainer>
@@ -283,20 +288,42 @@ function TopAppsCard({ aggregatedLog }) {
 
 export default function Actividades() {
   const today = atlantaToday();
+  const { user } = useAuth();
+  // Rol con "Solo lo propio" en Actividades: ve únicamente SU actividad (el servidor también lo fuerza).
+  const perms = user?.role?.permissions || [];
+  const ownOnly = perms.includes("actividades:own") && !perms.includes("actividades");
+
+  // Lo que se ve en los controles es un BORRADOR: no se le pide nada al servidor hasta tocar "Confirmar".
   const [preset, setPreset] = useState("hoy");
   const [customFrom, setCustomFrom] = useState(today);
   const [customTo, setCustomTo] = useState(today);
   const [isCustom, setIsCustom] = useState(false);
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState(""); // "" = todavía no eligió a nadie; "todos" = todos los empleados (opcional, carga más datos)
+  const [draftEmployeeId, setDraftEmployeeId] = useState(""); // "" = nadie todavía; "todos" = todos (carga más datos)
+  // Lo confirmado: { employeeId, from, to }. null = todavía no se confirmó nada → no se carga nada.
+  const [applied, setApplied] = useState(null);
 
-  const { from, to } = isCustom ? { from: customFrom, to: customTo } : computeRange(preset);
-  const isSingleDay = from === to;
-  // Hasta que se elige un empleado no se le pide NADA al servidor (antes cargaba el historial de
-  // todos de una y el panel se trababa). Primero se elige el empleado, después la fecha.
-  const noSelection = selectedEmployeeId === "";
+  const draftEmployee = ownOnly ? user?.id || "" : draftEmployeeId;
+  const draftRange = isCustom ? { from: customFrom, to: customTo } : computeRange(preset);
+  const rangeValid = !!draftRange.from && !!draftRange.to && draftRange.from <= draftRange.to;
+  const needsEmployee = draftEmployee === "";
+  const canConfirm = !needsEmployee && rangeValid;
+  const dirty = !applied || applied.employeeId !== draftEmployee || applied.from !== draftRange.from || applied.to !== draftRange.to;
+
+  function confirm() {
+    if (!canConfirm) return;
+    setApplied({ employeeId: draftEmployee, from: draftRange.from, to: draftRange.to });
+  }
+
+  // Todo lo que se pide al servidor sale de lo CONFIRMADO, nunca del borrador.
+  const noSelection = applied === null;
+  const from = applied?.from;
+  const to = applied?.to;
+  const selectedEmployeeId = applied?.employeeId ?? "";
+  const isSingleDay = !noSelection && from === to;
   const hasEmployeeSelected = !noSelection && selectedEmployeeId !== "todos";
 
-  const { data: employees } = useApi("/employees");
+  // Un operador con "solo lo propio" no necesita (ni debe recibir) la lista de empleados.
+  const { data: employees } = useApi(ownOnly ? null : "/employees");
   const timelineApi = useApi(
     !noSelection && isSingleDay ? `/activities/timeline?date=${from}${hasEmployeeSelected ? `&employeeId=${selectedEmployeeId}` : ""}` : null
   );
@@ -346,17 +373,30 @@ export default function Actividades() {
     padding: "7px 10px", color: COLORS.textPrimary, fontSize: 12.5,
   };
 
+  let confirmHint = "";
+  if (!rangeValid) confirmHint = "La fecha “desde” no puede ser posterior a “hasta”.";
+  else if (needsEmployee) confirmHint = "Elegí un empleado para poder confirmar.";
+  else if (!applied) confirmHint = "No se carga nada hasta que confirmes.";
+  else if (dirty) confirmHint = "Cambiaste los filtros: tocá Confirmar para actualizar.";
+  else confirmHint = `Mostrando ${applied.from === applied.to ? applied.from : `${applied.from} → ${applied.to}`}`;
+
   const filtersCard = (
     <Card>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
-        <span style={{ fontSize: 12.5, color: COLORS.textSecondary }}>Empleado:</span>
-        <select value={selectedEmployeeId} onChange={(e) => setSelectedEmployeeId(e.target.value)} style={selectStyle}>
-          <option value="">Elegí un empleado…</option>
-          <option value="todos">Todos los empleados (carga más datos)</option>
-          {(employees || []).slice().sort((a, b) => a.name.localeCompare(b.name)).map((e) => (
-            <option key={e.id} value={e.id}>{e.name}</option>
-          ))}
-        </select>
+        {ownOnly ? (
+          <span style={{ fontSize: 12.5, color: COLORS.textSecondary }}>Mostrando tu actividad</span>
+        ) : (
+          <>
+            <span style={{ fontSize: 12.5, color: COLORS.textSecondary }}>Empleado:</span>
+            <select value={draftEmployeeId} onChange={(e) => setDraftEmployeeId(e.target.value)} style={selectStyle}>
+              <option value="">Elegí un empleado…</option>
+              <option value="todos">Todos los empleados (carga más datos)</option>
+              {(employees || []).slice().sort((a, b) => a.name.localeCompare(b.name)).map((e) => (
+                <option key={e.id} value={e.id}>{e.name}</option>
+              ))}
+            </select>
+          </>
+        )}
 
         <div style={{ display: "flex", gap: 14, marginLeft: "auto", flexWrap: "wrap" }}>
           {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
@@ -368,7 +408,7 @@ export default function Actividades() {
         </div>
       </div>
 
-      <div style={{ opacity: noSelection ? 0.45 : 1, pointerEvents: noSelection ? "none" : "auto" }}>
+      <div style={{ opacity: needsEmployee ? 0.45 : 1, pointerEvents: needsEmployee ? "none" : "auto" }}>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
           {DATE_PRESETS.map((p) => (
             <button
@@ -395,6 +435,21 @@ export default function Actividades() {
             style={{ background: COLORS.bg, border: `1px solid ${isCustom ? COLORS.brand : COLORS.border}`, borderRadius: 8, padding: "7px 10px", color: COLORS.textPrimary, fontSize: 12.5 }} />
         </div>
       </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginTop: 16 }}>
+        <button
+          onClick={confirm}
+          disabled={!canConfirm || !dirty}
+          style={{
+            padding: "8px 20px", borderRadius: 8, fontSize: 13, fontWeight: 600, border: "none",
+            cursor: canConfirm && dirty ? "pointer" : "not-allowed", opacity: canConfirm && dirty ? 1 : 0.45,
+            background: COLORS.brand, color: "#fff",
+          }}
+        >
+          Confirmar
+        </button>
+        <span style={{ fontSize: 12, color: dirty && canConfirm && applied ? COLORS.textPrimary : COLORS.textTertiary }}>{confirmHint}</span>
+      </div>
     </Card>
   );
 
@@ -403,7 +458,7 @@ export default function Actividades() {
       <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
         {filtersCard}
         <Card>
-          <p style={{ color: COLORS.textTertiary, fontSize: 13 }}>Elegí un empleado para ver su actividad. Después elegís la fecha o el rango.</p>
+          <p style={{ color: COLORS.textTertiary, fontSize: 13 }}>{ownOnly ? "Elegí la fecha o el rango y tocá Confirmar para ver tu actividad." : "Elegí un empleado y la fecha o el rango, y tocá Confirmar para ver su actividad."}</p>
         </Card>
       </div>
     );

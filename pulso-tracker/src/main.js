@@ -26,13 +26,30 @@ if (!gotSingleInstanceLock) {
   });
 }
 
-const FULL_SIZE = { width: 380, height: 640 };
-const COMPACT_SIZE = { width: 300, height: 210 };
+const FULL_SIZE = { width: 380, height: 700 };
+// En modo compacto la altura NO es fija: la pantalla (renderer) mide su contenido y la pide
+// con "window:set-compact-height", así la ventana termina justo donde termina el recuadro de
+// "Finalizar jornada". Esta altura es solo la de arranque, hasta que llega esa medida.
+const COMPACT_SIZE = { width: 300, height: 250 };
+const COMPACT_MIN_HEIGHT = 160;
+let compactWindow = false;
+
+// La ventana completa es más alta (para que el historial se vea más largo), pero nunca más
+// alta que el área útil de la pantalla donde está.
+function fullHeightFor(win) {
+  try {
+    const { screen } = require("electron");
+    const display = win ? screen.getDisplayMatching(win.getBounds()) : screen.getPrimaryDisplay();
+    return Math.max(520, Math.min(FULL_SIZE.height, display.workArea.height - 16));
+  } catch {
+    return 640;
+  }
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: FULL_SIZE.width,
-    height: FULL_SIZE.height,
+    height: fullHeightFor(null),
     resizable: false,
     maximizable: false,
     title: "OKlrev Tracker",
@@ -241,11 +258,28 @@ ipcMain.handle("window:minimize-to-tray", () => {
   return true;
 });
 
-ipcMain.handle("window:set-compact-mode", (_event, compact) => {
+ipcMain.handle("window:set-compact-mode", (_event, compact, contentHeight) => {
   if (!mainWindow) return false;
-  const size = compact ? COMPACT_SIZE : FULL_SIZE;
+  compactWindow = !!compact;
   mainWindow.setResizable(true); // setSize can be finicky on a non-resizable window on some platforms
-  mainWindow.setSize(size.width, size.height);
+  if (compact) {
+    const h = Number(contentHeight) > 0 ? Math.ceil(Number(contentHeight)) : COMPACT_SIZE.height;
+    mainWindow.setContentSize(COMPACT_SIZE.width, Math.max(COMPACT_MIN_HEIGHT, h));
+  } else {
+    mainWindow.setContentSize(FULL_SIZE.width, fullHeightFor(mainWindow));
+  }
+  mainWindow.setResizable(false);
+  return true;
+});
+
+// El renderer vuelve a medir su contenido en modo compacto (por ejemplo cuando aparece o
+// desaparece el aviso de actualización) y pide la altura exacta.
+ipcMain.handle("window:set-compact-height", (_event, contentHeight) => {
+  if (!mainWindow || !compactWindow) return false;
+  const h = Math.ceil(Number(contentHeight));
+  if (!(h > 0)) return false;
+  mainWindow.setResizable(true);
+  mainWindow.setContentSize(COMPACT_SIZE.width, Math.max(COMPACT_MIN_HEIGHT, Math.min(h, 600)));
   mainWindow.setResizable(false);
   return true;
 });

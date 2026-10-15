@@ -487,6 +487,24 @@ async function handleToggle() {
 
 let mainListenersAttached = false;
 
+function setInfoOpen(open) {
+  $("info-popover").classList.toggle("hidden", !open);
+  $("info-btn").setAttribute("aria-expanded", String(open));
+}
+
+// Alto que necesita la ventana en modo compacto: el aviso de actualización (si se ve) + la vista.
+function measureCompactHeight() {
+  const banner = $("update-banner");
+  const bannerH = banner && !banner.classList.contains("hidden") ? banner.offsetHeight : 0;
+  return Math.ceil(bannerH + $("main-view").offsetHeight);
+}
+
+function syncCompactHeight() {
+  if (!document.body.classList.contains("compact-mode")) return;
+  if ($("main-view").classList.contains("hidden")) return;
+  window.pulso.setCompactHeight(measureCompactHeight());
+}
+
 function initMainView() {
   $("employee-name").textContent = state.config.employeeName || "Operador";
   const currentTheme = localStorage.getItem(THEME_STORAGE_KEY) || "oscuro";
@@ -510,8 +528,31 @@ function initMainView() {
 
     $("compact-toggle-btn").addEventListener("click", () => {
       const isCompact = document.body.classList.toggle("compact-mode");
-      window.pulso.setCompactMode(isCompact);
+      setInfoOpen(false);
+      // En compacto se le pasa a la ventana la altura real del contenido (hasta el final del
+      // recuadro de "Finalizar jornada"), no un número fijo.
+      window.pulso.setCompactMode(isCompact, isCompact ? measureCompactHeight() : undefined);
       $("compact-toggle-btn").title = isCompact ? "Expandir" : "Modo compacto";
+    });
+
+    // Si el contenido cambia de alto estando en compacto (p. ej. aparece el aviso de
+    // actualización), se vuelve a ajustar la ventana.
+    if (typeof ResizeObserver !== "undefined") {
+      const ro = new ResizeObserver(() => syncCompactHeight());
+      ro.observe($("main-view"));
+      ro.observe($("update-banner"));
+    }
+
+    // Ícono "i": el texto sobre qué registra la app queda en un popover en vez de ocupar lugar fijo.
+    $("info-btn").addEventListener("click", (e) => {
+      e.stopPropagation();
+      setInfoOpen($("info-popover").classList.contains("hidden"));
+    });
+    document.addEventListener("click", (e) => {
+      if (!$("info-popover").contains(e.target)) setInfoOpen(false);
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") setInfoOpen(false);
     });
 
     $("theme-toggle-btn").addEventListener("click", cycleTheme);
