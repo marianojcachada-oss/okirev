@@ -7,8 +7,10 @@ import { Card, SectionHeading, StateMessage } from "../components/ui";
 import { atlantaToday } from "../utils/dateRanges";
 import { formatDuration } from "../utils/duration";
 
+// Siempre en hora de Atlanta (ET), igual que el resto del panel — sin esto se mostraba la hora de
+// la zona de quien mira (por ejemplo Argentina).
 function fmtHMShort(iso) {
-  return new Date(iso).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hour12: false });
+  return new Date(iso).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/New_York" });
 }
 
 function fmtRange(startedAt, endedAt) {
@@ -147,7 +149,7 @@ export default function Grabaciones() {
               <option key={e.id} value={e.id}>{e.name}</option>
             ))}
           </select>
-          <span style={{ fontSize: 12.5, color: COLORS.textSecondary, marginLeft: 8 }}>Día:</span>
+          <span style={{ fontSize: 12.5, color: COLORS.textSecondary, marginLeft: 8 }}>Día (hora de Atlanta):</span>
           <input type="date" value={date} max={atlantaToday()} onChange={(e) => setDate(e.target.value)} style={selectStyle} />
           {employeeId && recordings && recordings.length > 0 && (
             <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: COLORS.textTertiary, marginLeft: "auto" }}>

@@ -41,6 +41,13 @@ function friendlySiteName(hostname) {
 // del documento). En vez de guardar el título completo (lo que infla el catálogo sin control),
 // lo comparamos contra una lista de sitios conocidos y solo usamos el nombre limpio si
 // reconocemos alguno — si no reconoce nada, cae al nombre del navegador solo, como siempre.
+// WhatsApp Web: el título de la pestaña activa es exactamente "WhatsApp" (a veces con "(3) " delante
+// por los mensajes sin leer). El título de la ventana del navegador es "<pestaña> - <perfil> - Edge".
+// Una página que solo MENCIONA la palabra (por ejemplo el CRM, donde llegan los chats de WhatsApp de
+// los clientes) NO es WhatsApp Web, así que el título tiene que EMPEZAR con "WhatsApp" y lo que sigue
+// solo puede ser el perfil y el nombre del navegador.
+const WHATSAPP_WEB_TITLE = /^(?:\(\d+\)\s*)?WhatsApp(?:\s+(?:and\s+\d+\s+more\s+pages?|y\s+\d+\s+p[aá]ginas?\s+m[aá]s))?(?:\s+[-–—]\s+(?:[^-–—]{1,60}\s+[-–—]\s+)?(?:Microsoft.{0,2}\s?Edge|Google Chrome|Mozilla Firefox|Brave|Opera)\s*)?$/i;
+
 const TITLE_SITE_PATTERNS = [
   { match: /microsoft teams/i, name: "Microsoft Teams", hostname: "teams.microsoft.com" },
   { match: /taxicaller|central de despacho/i, name: "Taxi caller", hostname: "app.taxicaller.net" },
@@ -50,7 +57,7 @@ const TITLE_SITE_PATTERNS = [
   { match: /gmail/i, name: "Gmail", hostname: "mail.google.com" },
   { match: /google drive/i, name: "Google Drive", hostname: "drive.google.com" },
   { match: /google docs/i, name: "Google Docs", hostname: "docs.google.com" },
-  { match: /whatsapp/i, name: "WhatsApp", hostname: "web.whatsapp.com" },
+  { match: WHATSAPP_WEB_TITLE, name: "WhatsApp", hostname: "web.whatsapp.com" },
   { match: /instagram/i, name: "Instagram", hostname: "www.instagram.com" },
   { match: /facebook/i, name: "Facebook", hostname: "www.facebook.com" },
   { match: /ringcentral/i, name: "RingCentral", hostname: "app.ringcentral.com" },
@@ -217,9 +224,15 @@ function categorize(isIdle) {
   return isIdle ? "Inactivo" : null; // null = let the backend resolve it from the catalog
 }
 
+// Hora del último sondeo que SÍ corrió. Si la PC se suspende, hiberna o se cuelga, el sondeo se frena
+// horas y al volver el segmento en curso "duraba" todo ese tiempo: una actividad de 17 horas que
+// nunca existió. Un segmento solo puede durar hasta poco después del último sondeo que corrió.
+let lastTickAt = null;
+
 function flush(endTime) {
   if (!currentSegment) return;
-  const durationMs = endTime - currentSegment.startedAt;
+  const cappedEnd = lastTickAt ? Math.min(endTime, lastTickAt + POLL_MS * 2) : endTime;
+  const durationMs = cappedEnd - currentSegment.startedAt;
   if (durationMs >= MIN_SEGMENT_MS && onFlush) {
     onFlush({
       app: currentSegment.label,
@@ -230,6 +243,15 @@ function flush(endTime) {
 }
 
 async function tick() {
+  const tickStartedAt = Date.now();
+  // Si pasó mucho más que el intervalo desde el sondeo anterior, la PC estuvo suspendida o colgada:
+  // se cierra el segmento anterior hasta donde realmente corrió y se arranca uno nuevo.
+  if (lastTickAt && tickStartedAt - lastTickAt > POLL_MS * 3 && currentSegment) {
+    flush(tickStartedAt);
+    currentSegment = null;
+  }
+  lastTickAt = tickStartedAt;
+
   let isIdle = false;
   try {
     isIdle = powerMonitor.getSystemIdleTime() >= idleThresholdSeconds;
@@ -297,6 +319,7 @@ function start({ idleThresholdMinutes, flushCallback, statusCallback }) {
 
   stop(); // clear any previous loop first
   currentSegment = null;
+  lastTickAt = null;
   tick();
   pollInterval = setInterval(tick, POLL_MS);
 }

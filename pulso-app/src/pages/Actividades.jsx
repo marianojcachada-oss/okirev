@@ -287,21 +287,28 @@ export default function Actividades() {
   const [customFrom, setCustomFrom] = useState(today);
   const [customTo, setCustomTo] = useState(today);
   const [isCustom, setIsCustom] = useState(false);
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState("todos");
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState(""); // "" = todavía no eligió a nadie; "todos" = todos los empleados (opcional, carga más datos)
 
   const { from, to } = isCustom ? { from: customFrom, to: customTo } : computeRange(preset);
   const isSingleDay = from === to;
-  const hasEmployeeSelected = selectedEmployeeId !== "todos";
+  // Hasta que se elige un empleado no se le pide NADA al servidor (antes cargaba el historial de
+  // todos de una y el panel se trababa). Primero se elige el empleado, después la fecha.
+  const noSelection = selectedEmployeeId === "";
+  const hasEmployeeSelected = !noSelection && selectedEmployeeId !== "todos";
 
   const { data: employees } = useApi("/employees");
-  const timelineApi = useApi(isSingleDay ? `/activities/timeline?date=${from}` : null);
-  const summaryApi = useApi(!isSingleDay && !hasEmployeeSelected ? `/employees/summary?from=${from}&to=${to}` : null);
+  const timelineApi = useApi(
+    !noSelection && isSingleDay ? `/activities/timeline?date=${from}${hasEmployeeSelected ? `&employeeId=${selectedEmployeeId}` : ""}` : null
+  );
+  const summaryApi = useApi(!noSelection && !isSingleDay && !hasEmployeeSelected ? `/employees/summary?from=${from}&to=${to}` : null);
   const timelineByDayApi = useApi(
     !isSingleDay && hasEmployeeSelected ? `/activities/timeline-by-day?employeeId=${selectedEmployeeId}&from=${from}&to=${to}` : null
   );
-  const logQuery = hasEmployeeSelected
-    ? `/activities?from=${from}&to=${to}&employeeId=${selectedEmployeeId}`
-    : `/activities?date=${to}`;
+  const logQuery = noSelection
+    ? null
+    : hasEmployeeSelected
+      ? `/activities?from=${from}&to=${to}&employeeId=${selectedEmployeeId}`
+      : `/activities?date=${to}`;
   // The backend already aggregates by (employee, app, category) and sums durations, so this
   // is ready to render directly — no client-side grouping needed.
   const { data: aggregatedLog, loading: loadingLog, error: errorLog, refetch: refetchLog } = useApi(logQuery);
@@ -334,11 +341,34 @@ export default function Actividades() {
     setIsCustom(false);
   }
 
-  if (loading || error) return <StateMessage loading={loading} error={error} onRetry={refetchLog} />;
+  const selectStyle = {
+    background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 8,
+    padding: "7px 10px", color: COLORS.textPrimary, fontSize: 12.5,
+  };
 
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <Card>
+  const filtersCard = (
+    <Card>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
+        <span style={{ fontSize: 12.5, color: COLORS.textSecondary }}>Empleado:</span>
+        <select value={selectedEmployeeId} onChange={(e) => setSelectedEmployeeId(e.target.value)} style={selectStyle}>
+          <option value="">Elegí un empleado…</option>
+          <option value="todos">Todos los empleados (carga más datos)</option>
+          {(employees || []).slice().sort((a, b) => a.name.localeCompare(b.name)).map((e) => (
+            <option key={e.id} value={e.id}>{e.name}</option>
+          ))}
+        </select>
+
+        <div style={{ display: "flex", gap: 14, marginLeft: "auto", flexWrap: "wrap" }}>
+          {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
+            <div key={key} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: COLORS.textSecondary }}>
+              <span style={{ width: 9, height: 9, borderRadius: 2, background: CATEGORY_COLORS[key], display: "inline-block" }} />
+              {label}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ opacity: noSelection ? 0.45 : 1, pointerEvents: noSelection ? "none" : "auto" }}>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
           {DATE_PRESETS.map((p) => (
             <button
@@ -363,29 +393,35 @@ export default function Actividades() {
           <span style={{ color: COLORS.textTertiary, fontSize: 12.5 }}>hasta</span>
           <input type="date" value={customTo} max={today} onChange={(e) => { setCustomTo(e.target.value); setIsCustom(true); }}
             style={{ background: COLORS.bg, border: `1px solid ${isCustom ? COLORS.brand : COLORS.border}`, borderRadius: 8, padding: "7px 10px", color: COLORS.textPrimary, fontSize: 12.5 }} />
-
-          <span style={{ fontSize: 12.5, color: COLORS.textSecondary, marginLeft: 8 }}>Empleado:</span>
-          <select
-            value={selectedEmployeeId}
-            onChange={(e) => setSelectedEmployeeId(e.target.value)}
-            style={{ background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "7px 10px", color: COLORS.textPrimary, fontSize: 12.5 }}
-          >
-            <option value="todos">Todos los empleados</option>
-            {(employees || []).slice().sort((a, b) => a.name.localeCompare(b.name)).map((e) => (
-              <option key={e.id} value={e.id}>{e.name}</option>
-            ))}
-          </select>
-
-          <div style={{ display: "flex", gap: 14, marginLeft: "auto", flexWrap: "wrap" }}>
-            {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
-              <div key={key} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: COLORS.textSecondary }}>
-                <span style={{ width: 9, height: 9, borderRadius: 2, background: CATEGORY_COLORS[key], display: "inline-block" }} />
-                {label}
-              </div>
-            ))}
-          </div>
         </div>
-      </Card>
+      </div>
+    </Card>
+  );
+
+  if (noSelection) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+        {filtersCard}
+        <Card>
+          <p style={{ color: COLORS.textTertiary, fontSize: 13 }}>Elegí un empleado para ver su actividad. Después elegís la fecha o el rango.</p>
+        </Card>
+      </div>
+    );
+  }
+
+  // Los filtros quedan siempre visibles: solo el contenido de abajo muestra "cargando" o el error.
+  if (loading || error) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+        {filtersCard}
+        <StateMessage loading={loading} error={error} onRetry={refetchLog} />
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      {filtersCard}
 
       {hasEmployeeSelected && <TopAppsCard aggregatedLog={aggregatedLog} />}
       <CategorySummary aggregatedLog={aggregatedLog} />

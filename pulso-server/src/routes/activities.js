@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { query, newId, formatDurationSeconds, parseDurationToSeconds, EFFECTIVE_CATEGORY_SQL, WITHIN_ATTENDANCE_SQL, nowHM } from "../db.js";
+import { query, newId, formatDurationSeconds, parseDurationToSeconds, EFFECTIVE_CATEGORY_SQL, WITHIN_ATTENDANCE_SQL, nowHM, todayDateStr } from "../db.js";
 import { requireSession, requirePermission } from "../middleware/requireSession.js";
 import { isForeignDevice } from "../deviceOwner.js";
 
@@ -53,13 +53,15 @@ function minutesSinceMidnightAtlanta(date) {
 router.get("/", requireSession, requirePermission("actividades"), async (req, res) => {
   const { date, from, to, employeeId } = req.query;
   const scopedEmployeeId = isOwnScoped(req) ? req.session.employeeId : employeeId || null;
+  // Sin fecha ni rango NO se devuelve todo el historial (era lo que trababa el panel): por defecto, hoy.
+  const effectiveDate = !date && !(from && to) ? todayDateStr() : date;
 
   const conditions = [];
   const values = [];
   let i = 1;
-  if (date) {
+  if (effectiveDate) {
     conditions.push(`(a.occurred_at at time zone 'America/New_York')::date = $${i++}`);
-    values.push(date);
+    values.push(effectiveDate);
   } else if (from && to) {
     conditions.push(`(a.occurred_at at time zone 'America/New_York')::date between $${i++} and $${i++}`);
     values.push(from, to);
@@ -87,7 +89,8 @@ router.get("/", requireSession, requirePermission("actividades"), async (req, re
 router.get("/timeline", requireSession, requirePermission("actividades"), async (req, res) => {
   const date = req.query.date;
   if (!date) return res.status(400).json({ error: "Falta el parámetro date (YYYY-MM-DD)" });
-  const scopedEmployeeId = isOwnScoped(req) ? req.session.employeeId : null;
+  // employeeId opcional: si viene, solo se traen los segmentos de ese empleado (en vez de los de todos).
+  const scopedEmployeeId = isOwnScoped(req) ? req.session.employeeId : req.query.employeeId || null;
 
   const { rows } = await query(
     `select a.employee_id, e.name as employee_name, t.name as team,
@@ -180,6 +183,11 @@ router.post("/", requireSession, async (req, res) => {
 
   // Si la jornada se inició en OTRA PC, lo que reporta esta no se cuenta (evita contar doble).
   if (await isForeignDevice(employeeId, device)) return res.json({ ignored: true, reason: "jornada iniciada en otra PC" });
+
+  // Un pedazo de actividad dura como mucho ~1 minuto (el tracker corta cada 60 s). Más de 15 minutos es
+  // imposible: es una PC que estuvo suspendida o colgada y un tracker viejo anotó todo ese tiempo como
+  // actividad (hubo casos de 17 horas). Se descarta en lugar de inflar las horas.
+  if (parseDurationToSeconds(duration) > 15 * 60) return res.json({ ignored: true, reason: "duración imposible (PC suspendida o colgada)" });
 
   const employeeResult = await query("select id, name from employees where id = $1", [employeeId]);
   const employee = employeeResult.rows[0];

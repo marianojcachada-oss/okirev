@@ -1,6 +1,6 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
-import { query, newId, todayDateStr, nowHM, EFFECTIVE_CATEGORY_SQL, WITHIN_ATTENDANCE_SQL } from "../db.js";
+import { query, newId, todayDateStr, nowHM, EFFECTIVE_CATEGORY_SQL } from "../db.js";
 import { requireSession, requirePermission, requireSuperAdmin } from "../middleware/requireSession.js";
 import { isForeignDevice } from "../deviceOwner.js";
 
@@ -93,14 +93,19 @@ router.get("/:id/daily-summary", requireSession, requirePermission("empleados", 
        group by date`,
       [req.params.id, from, to]
     ),
+    // La actividad se asigna a la fecha de la JORNADA a la que pertenece (igual que el tiempo de
+    // trabajo), no a la fecha del reloj en que ocurrió: un turno que cruza la medianoche suma su
+    // trabajo y su actividad en el mismo día, y "Actividad" no puede pasar a "Tiempo de trabajo".
     query(
-      `select (a.occurred_at at time zone 'America/New_York')::date as day,
+      `select att.date as day,
               ${EFFECTIVE_CATEGORY_SQL} as category, sum(a.duration_seconds)::int as seconds
-       from activities a
+       from attendance att
+       join activities a on a.employee_id = att.employee_id
+         and a.occurred_at >= att.check_in_at
+         and a.occurred_at <= least(coalesce(att.check_out_at, now()), att.check_in_at + interval '24 hours')
        left join app_catalog ac on ac.app_label = a.app
-       where a.employee_id = $1 and (a.occurred_at at time zone 'America/New_York')::date between $2 and $3
-         and ${WITHIN_ATTENDANCE_SQL}
-       group by day, ${EFFECTIVE_CATEGORY_SQL}`,
+       where att.employee_id = $1 and att.date between $2 and $3
+       group by att.date, ${EFFECTIVE_CATEGORY_SQL}`,
       [req.params.id, from, to]
     ),
   ]);
@@ -214,13 +219,16 @@ router.get("/summary", requireSession, requirePermission("empleados", "asistenci
        group by employee_id`,
       [from, to, scopedEmployeeId]
     ),
+    // Misma regla que daily-summary: la actividad cuenta en la fecha de la jornada a la que pertenece.
     query(
       `select a.employee_id, ${EFFECTIVE_CATEGORY_SQL} as category, sum(a.duration_seconds)::int as seconds
-       from activities a
+       from attendance att
+       join activities a on a.employee_id = att.employee_id
+         and a.occurred_at >= att.check_in_at
+         and a.occurred_at <= least(coalesce(att.check_out_at, now()), att.check_in_at + interval '24 hours')
        left join app_catalog ac on ac.app_label = a.app
-       where (a.occurred_at at time zone 'America/New_York')::date between $1 and $2
-         and ($3::text is null or a.employee_id = $3)
-         and ${WITHIN_ATTENDANCE_SQL}
+       where att.date between $1 and $2
+         and ($3::text is null or att.employee_id = $3)
        group by a.employee_id, ${EFFECTIVE_CATEGORY_SQL}`,
       [from, to, scopedEmployeeId]
     ),
