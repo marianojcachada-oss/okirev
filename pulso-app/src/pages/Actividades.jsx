@@ -410,11 +410,13 @@ export default function Actividades() {
   }
 
   // Los filtros quedan siempre visibles: solo el contenido de abajo muestra "cargando" o el error.
-  if (loading || error) {
+  // `!aggregatedLog`: en el primer render tras elegir empleado la ruta recién pasó de null a una URL y
+  // los datos todavía son null (loading aún false) — sin esta guarda, aggregatedLog.length rompía la pantalla.
+  if (loading || error || !aggregatedLog) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
         {filtersCard}
-        <StateMessage loading={loading} error={error} onRetry={refetchLog} />
+        <StateMessage loading={loading || (!error && !aggregatedLog)} error={error} onRetry={refetchLog} />
       </div>
     );
   }
